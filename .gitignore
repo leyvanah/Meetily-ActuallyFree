@@ -91,3 +91,6 @@ frontend/src-tauri/nsis-progress/*.obj
 frontend/MeetilyProgress.obj
 
 CLAUDE.md
+
+# Unreferenced MSVC bootstrapper: install Build Tools from Microsoft instead
+frontend/vs_buildtools.exe
