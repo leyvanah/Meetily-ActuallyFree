@@ -1,1 +1,47 @@
-{}
+{
+  "common": {
+    "settings": "Настройки",
+    "clear": "Очистить",
+    "delete": "Удалить",
+    "cancel": "Отмена",
+    "save": "Сохранить"
+  },
+  "sidebar": {
+    "searchEverything": "Поиск по всему",
+    "searchEverythingShortcut": "Поиск по всему (Ctrl+K)",
+    "startRecording": "Начать запись",
+    "recordingInProgressTooltip": "Идёт запись...",
+    "recordingInProgress": "Идёт запись…",
+    "newRecording": "Новая запись",
+    "meetingsTooltip": "Сессии",
+    "importAudio": "Импорт аудио",
+    "recentMeetings": "Недавние сессии",
+    "newCall": "Новая сессия",
+    "selectedCount": "Выбрано: {count}",
+    "editMeetingTitle": "Изменить название сессии",
+    "editMeetingTitleAria": "Изменить название сессии",
+    "deleteMeetingAria": "Удалить сессию",
+    "viewAllLibrary": "Показать всю библиотеку",
+    "showRecentOnly": "Показать только недавние",
+    "confirmDeleteMeeting": "Вы уверены, что хотите удалить эту сессию? Это действие нельзя отменить.",
+    "confirmBulkDelete": "Удалить {count, plural, one {# выбранную сессию} few {# выбранные сессии} many {# выбранных сессий} other {# выбранных сессий}}? Это действие нельзя отменить.",
+    "meetingTitleLabel": "Название сессии",
+    "meetingTitlePlaceholder": "Введите название сессии",
+    "meetingDeletedSuccess": "Сессия успешно удалена",
+    "dataRemoved": "Все связанные данные удалены",
+    "deleteMeetingFailed": "Не удалось удалить сессию",
+    "deletedCount": "Удалено {count, plural, one {# сессия} few {# сессии} many {# сессий} other {# сессий}}",
+    "failedToDeleteCount": "Не удалось удалить {count, plural, one {# сессию} few {# сессии} many {# сессий} other {# сессий}}",
+    "titleEmptyError": "Название сессии не может быть пустым",
+    "titleUpdatedSuccess": "Название сессии успешно обновлено",
+    "titleUpdateFailed": "Не удалось обновить название сессии"
+  },
+  "home": {
+    "recoveredSuccessTitle": "Сессия успешно восстановлена!",
+    "recoveredWithAudio": "Транскрипт и аудио восстановлены",
+    "recoveredNoAudio": "Транскрипт восстановлен (аудио недоступно)",
+    "viewMeetingAction": "Открыть сессию",
+    "recoveryFailedTitle": "Не удалось восстановить сессию",
+    "unknownError": "Неизвестная ошибка"
+  }
+}

@@ -1,1 +1,47 @@
-{}
+{
+  "common": {
+    "settings": "Settings",
+    "clear": "Clear",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "sidebar": {
+    "searchEverything": "Search everything",
+    "searchEverythingShortcut": "Search everything (Ctrl+K)",
+    "startRecording": "Start Recording",
+    "recordingInProgressTooltip": "Recording in progress...",
+    "recordingInProgress": "Recording in progress…",
+    "newRecording": "New Recording",
+    "meetingsTooltip": "Meetings",
+    "importAudio": "Import Audio",
+    "recentMeetings": "Recent Meetings",
+    "newCall": "New Call",
+    "selectedCount": "{count} selected",
+    "editMeetingTitle": "Edit Meeting Title",
+    "editMeetingTitleAria": "Edit meeting title",
+    "deleteMeetingAria": "Delete meeting",
+    "viewAllLibrary": "View all library",
+    "showRecentOnly": "Show recent only",
+    "confirmDeleteMeeting": "Are you sure you want to delete this meeting? This action cannot be undone.",
+    "confirmBulkDelete": "Delete {count, plural, one {# selected meeting} other {# selected meetings}}? This action cannot be undone.",
+    "meetingTitleLabel": "Meeting Title",
+    "meetingTitlePlaceholder": "Enter meeting title",
+    "meetingDeletedSuccess": "Meeting deleted successfully",
+    "dataRemoved": "All associated data has been removed",
+    "deleteMeetingFailed": "Failed to delete meeting",
+    "deletedCount": "Deleted {count, plural, one {# meeting} other {# meetings}}",
+    "failedToDeleteCount": "Failed to delete {count, plural, one {# meeting} other {# meetings}}",
+    "titleEmptyError": "Meeting title cannot be empty",
+    "titleUpdatedSuccess": "Meeting title updated successfully",
+    "titleUpdateFailed": "Failed to update meeting title"
+  },
+  "home": {
+    "recoveredSuccessTitle": "Meeting recovered successfully!",
+    "recoveredWithAudio": "Transcripts and audio recovered",
+    "recoveredNoAudio": "Transcripts recovered (no audio available)",
+    "viewMeetingAction": "View Meeting",
+    "recoveryFailedTitle": "Failed to recover meeting",
+    "unknownError": "Unknown error occurred"
+  }
+}
