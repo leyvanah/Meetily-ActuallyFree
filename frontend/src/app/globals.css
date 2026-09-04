@@ -131,6 +131,31 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
+
+  /* AMOLED: true-black, monochrome variant layered on top of .dark (see
+     the html.amoled block below for the "Actually Free" token overrides
+     that drive the rest of the app's dark skin). */
+  .amoled {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 7.8%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 7.8%;
+    --muted-foreground: 0 0% 74.1%;
+    --accent: 0 0% 11%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65.5% 64.7%;
+    --destructive-foreground: 0 0% 0%;
+    --border: 0 0% 26.7%;
+    --input: 0 0% 26.7%;
+    --ring: 0 0% 100%;
+  }
 }
 
 @layer base {
@@ -268,6 +293,30 @@ html.dark {
   --af-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.28);
   --af-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.30);
 
+}
+
+/* AMOLED: layered on top of html.dark (adds .amoled alongside .dark), so it
+   only needs to redefine the tokens that change — shadows, transitions and
+   everything else keep inheriting from the .dark block above. True black
+   canvas, monochrome surfaces/text, no colored accent. */
+html.amoled {
+  --af-bg: #000000;
+  --af-panel: #0a0a0a;
+  --af-panel-2: #141414;
+  --af-hover: rgba(255, 255, 255, 0.06);
+  --af-active: rgba(255, 255, 255, 0.12);
+
+  --af-border: #444444;
+  --af-border-strong: #5c5c5c;
+
+  --af-text: #ffffff;
+  --af-text-2: #bdbdbd;
+  --af-text-3: #8a8a8a;
+
+  --af-accent: #ffffff;
+  --af-accent-soft: rgba(255, 255, 255, 0.12);
+
+  color-scheme: dark;
 }
 
 html, body { background-color: var(--af-bg); color: var(--af-text); }
@@ -496,3 +545,30 @@ html.dark.minibar-window body {
    the UI with no visual anchor for the main action on a screen. */
 .dark .bg-blue-600 { background-color: var(--af-accent) !important; }
 .dark .bg-blue-600:hover, .dark .hover\:bg-blue-700:hover { background-color: #3b7ae8 !important; }
+
+/* ============================================================
+   AMOLED overrides
+   The rules above mostly read var(--af-*), which html.amoled already
+   redefines above — so this section only needs to catch the handful of
+   spots that hardcode a blue accent hex instead of a token, which would
+   otherwise clash with the monochrome AMOLED palette. */
+.amoled .hover\:bg-gray-200:hover { background-color: var(--af-hover) !important; }
+.amoled .text-blue-800 { color: var(--af-text-2) !important; }
+.amoled .bg-blue-600:hover, .amoled .hover\:bg-blue-700:hover { background-color: #d6d6d6 !important; }
+
+.amoled :focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--af-bg), 0 0 0 4px rgba(255, 255, 255, 0.55) !important;
+  border-radius: var(--af-radius-sm);
+}
+.amoled input:focus, .amoled textarea:focus, .amoled [data-slot="input-group"]:focus-within {
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12) !important;
+}
+
+.amoled ::selection {
+  background-color: rgba(255, 255, 255, 0.28);
+  color: var(--af-text);
+}
+
+.amoled ::-webkit-scrollbar-thumb:hover { background-color: #5c5c5c; }
