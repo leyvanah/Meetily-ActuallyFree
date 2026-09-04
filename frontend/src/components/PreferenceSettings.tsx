@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Switch } from "./ui/switch"
+import { Button } from "./ui/button"
+import { ButtonGroup } from "./ui/button-group"
 import { FolderCog, FolderOpen } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
 import Analytics from "@/lib/analytics"
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
-import { applyAppTheme, getSavedAppTheme } from "@/lib/app-theme"
+import { applyAppTheme, getSavedAppTheme, type AppTheme } from "@/lib/app-theme"
 
 export function PreferenceSettings() {
   const {
@@ -39,14 +41,14 @@ export function PreferenceSettings() {
     }
   };
 
-  // Theme (default dark). Applies a `.dark` class on <html> for the navy skin.
-  const [isDark, setIsDark] = useState(true);
+  // Theme (default dark): light, dark navy, or AMOLED true black.
+  const [theme, setTheme] = useState<AppTheme>('dark');
   useEffect(() => {
-    setIsDark(getSavedAppTheme() === 'dark');
+    setTheme(getSavedAppTheme());
   }, []);
-  const toggleTheme = (dark: boolean) => {
-    setIsDark(dark);
-    applyAppTheme(dark ? 'dark' : 'light', true);
+  const selectTheme = (next: AppTheme) => {
+    setTheme(next);
+    applyAppTheme(next, true);
   };
 
   // Lazy load preferences on mount (only loads if not already cached)
@@ -204,12 +206,37 @@ export function PreferenceSettings() {
     <div className="space-y-6">
       {/* Appearance / Theme Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Dark mode</h3>
-            <p className="text-sm text-gray-600">Use the dark navy theme. Turn off for the classic light theme.</p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Theme</h3>
+            <p className="text-sm text-gray-600">Light, dark navy, or AMOLED true black.</p>
           </div>
-          <Switch checked={isDark} onCheckedChange={toggleTheme} />
+          <ButtonGroup>
+            <Button
+              type="button"
+              size="sm"
+              variant={theme === 'light' ? 'default' : 'outline'}
+              onClick={() => selectTheme('light')}
+            >
+              Light
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              onClick={() => selectTheme('dark')}
+            >
+              Dark
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={theme === 'amoled' ? 'default' : 'outline'}
+              onClick={() => selectTheme('amoled')}
+            >
+              AMOLED
+            </Button>
+          </ButtonGroup>
         </div>
       </div>
 
