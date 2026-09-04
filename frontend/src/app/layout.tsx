@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { applyAppTheme, getSavedAppTheme } from '@/lib/app-theme'
+import { LocaleProvider } from '@/contexts/LocaleContext'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RecordingStateProvider } from '@/contexts/RecordingStateContext'
 import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
@@ -321,15 +322,18 @@ export default function RootLayout({
   // Checked via location rather than usePathname so no hook order changes.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/minibar')) {
     return (
-      <html lang="en" className="dark minibar-window">
-        <body className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>
-          {children}
-        </body>
-      </html>
+      <LocaleProvider>
+        <html lang="en" className="dark minibar-window">
+          <body className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>
+            {children}
+          </body>
+        </html>
+      </LocaleProvider>
     )
   }
 
   return (
+    <LocaleProvider>
     <html lang="en" className="dark">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
         {!startupResolved ? (
@@ -400,5 +404,6 @@ export default function RootLayout({
         <Toaster position="bottom-center" theme="dark" richColors closeButton />
       </body>
     </html>
+    </LocaleProvider>
   )
 }
