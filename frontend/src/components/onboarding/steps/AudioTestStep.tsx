@@ -380,7 +380,7 @@ export function AudioTestStep() {
         <button
           type="button"
           onClick={() => void finish()}
-          className="w-full h-11 rounded-xl bg-[var(--af-accent)] text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99]"
+          className="w-full h-11 rounded-xl bg-[var(--af-accent)] text-sm font-semibold text-[var(--af-accent-contrast)] shadow-sm transition hover:brightness-110 active:scale-[0.99]"
         >
           {micHeard || sysHeard ? 'Continue' : 'Skip for now'}
         </button>

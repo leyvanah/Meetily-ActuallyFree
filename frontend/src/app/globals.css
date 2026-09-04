@@ -258,6 +258,7 @@
 
   --af-accent: #2563eb;
   --af-accent-soft: #e7efff;
+  --af-accent-contrast: #ffffff;
 
   --af-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
   --af-shadow-md: 0 2px 6px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.07);
@@ -287,6 +288,7 @@ html.dark {
 
   --af-accent: #4a8bff;
   --af-accent-soft: #16233d;
+  --af-accent-contrast: #ffffff;
 
   /* Layered shadows read as depth; a single heavy blur reads as a smudge. */
   --af-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
@@ -315,6 +317,10 @@ html.amoled {
 
   --af-accent: #ffffff;
   --af-accent-soft: rgba(255, 255, 255, 0.12);
+  /* Accent is a white fill in this monochrome palette, so text/icons drawn
+     on top of it need to flip to black instead of the --af-accent-contrast
+     white used by the light/dark (blue) accent. */
+  --af-accent-contrast: #000000;
 
   color-scheme: dark;
 }

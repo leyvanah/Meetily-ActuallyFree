@@ -101,7 +101,7 @@ function ProfileProblem({ title, detail, retry }: { title: string; detail: strin
         <p className="mt-2 text-sm leading-relaxed text-[var(--af-text-2)]">{detail}</p>
         <div className="mt-6 flex justify-center gap-3">
           {retry && (
-            <button onClick={retry} className="inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-4 py-2 text-sm font-medium text-white hover:brightness-110">
+            <button onClick={retry} className="inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-4 py-2 text-sm font-medium text-[var(--af-accent-contrast)] hover:brightness-110">
               <RefreshCw className="h-4 w-4" /> Retry
             </button>
           )}
@@ -338,7 +338,7 @@ function PersonProfileContent() {
                       Summarize recurring topics, commitments, collaboration patterns, and recent changes with meeting citations.
                     </p>
                     {overviewError && <p className="mx-auto mt-3 max-w-md text-xs text-red-400">{overviewError}</p>}
-                    <button onClick={generateOverview} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-4 py-2 text-sm font-medium text-white hover:brightness-110">
+                    <button onClick={generateOverview} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-4 py-2 text-sm font-medium text-[var(--af-accent-contrast)] hover:brightness-110">
                       <Sparkles className="h-4 w-4" /> Generate overview
                     </button>
                   </div>
@@ -425,7 +425,7 @@ function PersonProfileContent() {
                 <button
                   onClick={saveNotes}
                   disabled={!notesDirty || savingNotes}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--af-accent)] px-3 py-2 text-xs font-semibold text-[var(--af-accent-contrast)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {savingNotes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                   Save notes
@@ -446,7 +446,7 @@ function PersonProfileContent() {
                 <div className="max-h-80 space-y-4 overflow-y-auto p-4">
                   {history.map((message) => (
                     <div key={message.id} className="space-y-2">
-                      <div className="ml-auto w-fit max-w-[92%] rounded-xl bg-[var(--af-accent)] px-3 py-2 text-xs leading-relaxed text-white">
+                      <div className="ml-auto w-fit max-w-[92%] rounded-xl bg-[var(--af-accent)] px-3 py-2 text-xs leading-relaxed text-[var(--af-accent-contrast)]">
                         {message.question}
                       </div>
                       <div className={`rounded-xl bg-[var(--af-panel-2)] px-3 py-2.5 text-xs leading-relaxed ${message.status === 'error' ? 'text-red-400' : 'text-[var(--af-text-2)]'}`}>
@@ -485,7 +485,7 @@ function PersonProfileContent() {
                     <button
                       type="submit"
                       disabled={asking || !question.trim()}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--af-accent)] text-white hover:brightness-110 disabled:opacity-40"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--af-accent)] text-[var(--af-accent-contrast)] hover:brightness-110 disabled:opacity-40"
                       aria-label="Ask AI"
                     >
                       {asking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}

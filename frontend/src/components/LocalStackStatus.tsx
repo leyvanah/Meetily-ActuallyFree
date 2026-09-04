@@ -246,7 +246,7 @@ export function LocalStackStatus() {
           type="button"
           disabled={busy || !!status?.recording}
           onClick={() => void freeAll()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--af-accent)] px-3 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--af-accent)] px-3 py-2 text-sm font-medium text-[var(--af-accent-contrast)] hover:brightness-110 disabled:opacity-40"
         >
           <Trash2 size={14} /> Free all memory
         </button>

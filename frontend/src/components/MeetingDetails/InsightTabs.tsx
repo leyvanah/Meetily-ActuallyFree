@@ -465,7 +465,7 @@ export function InsightTabs({
           <div className="mb-3 max-h-56 space-y-3 overflow-y-auto">
             {history.map((qa) => (
               <div key={qa.id} className="space-y-1">
-                <div className="ml-auto flex w-fit max-w-[85%] items-center gap-1 rounded-lg bg-[var(--af-accent)] px-3 py-1.5 text-sm text-white">
+                <div className="ml-auto flex w-fit max-w-[85%] items-center gap-1 rounded-lg bg-[var(--af-accent)] px-3 py-1.5 text-sm text-[var(--af-accent-contrast)]">
                   {qa.question}
                 </div>
                 <div className="w-fit max-w-[92%] rounded-lg bg-[var(--af-panel-2)] px-3 py-2 text-sm text-[var(--af-text)]">
@@ -496,7 +496,7 @@ export function InsightTabs({
           <button
             onClick={ask}
             disabled={busy || !question.trim()}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--af-accent)] text-white transition-[filter] hover:brightness-110 disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--af-accent)] text-[var(--af-accent-contrast)] transition-[filter] hover:brightness-110 disabled:opacity-40"
             title="Ask AI"
           >
             <Send size={16} />
