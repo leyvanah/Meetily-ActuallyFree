@@ -1,0 +1,6 @@
+# Local build config for the meetily fork (not present upstream).
+# NOTE: do NOT set WHISPER_DONT_GENERATE_BINDINGS on Windows — the bundled
+# src/bindings.rs in whisper-rs-sys 0.11.1 is Linux-only (glibc size asserts
+# fail with E0080). Windows needs bindgen + libclang (LLVM 18.x, see docs/TZ).
+[env]
+LIBCLANG_PATH = "C:\\Program Files\\LLVM\\bin"
