@@ -103,6 +103,7 @@ async fn start_retranscription<R: Runtime>(
     let use_parakeet = provider.as_deref() == Some("parakeet");
     // The external service holds its own model - there is nothing local to unload
     let use_external = provider.as_deref() == Some("externalStt");
+    let use_gigaam = provider.as_deref() == Some("gigaam");
     let batch_lease = super::common::acquire_stt_batch_lease().await;
     let result = run_retranscription(
         app.clone(),
@@ -117,7 +118,9 @@ async fn start_retranscription<R: Runtime>(
     drop(batch_lease);
 
     // Unload the engine after the batch job (success, failure, or cancellation)
-    if !use_external {
+    if use_gigaam {
+        super::import::unload_gigaam_after_batch().await;
+    } else if !use_external {
         super::common::unload_engine_after_batch(use_parakeet).await;
     }
 
@@ -254,6 +257,7 @@ async fn run_retranscription<R: Runtime>(
     // Determine which provider to use (default to whisper)
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let use_external = provider.as_deref() == Some("externalStt");
+    let use_gigaam = provider.as_deref() == Some("gigaam");
 
     info!(
         "Starting retranscription for meeting {} with language {:?}, model {:?}, provider {:?}",
@@ -382,7 +386,7 @@ async fn run_retranscription<R: Runtime>(
     emit_progress(&app, &meeting_id, "transcribing", 25, "Loading transcription engine...");
 
     // Initialize the appropriate engine once (not per-segment)
-    let whisper_engine = if !use_parakeet && !use_external {
+    let whisper_engine = if !use_parakeet && !use_external && !use_gigaam {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
@@ -394,6 +398,11 @@ async fn run_retranscription<R: Runtime>(
     };
     let external_stt = if use_external {
         Some(get_or_init_external_stt(&app).await?)
+    } else {
+        None
+    };
+    let gigaam_engine = if use_gigaam {
+        Some(super::import::get_or_init_gigaam().await?)
     } else {
         None
     };
@@ -461,7 +470,15 @@ async fn run_retranscription<R: Runtime>(
         }
 
         // Transcribe this segment
-        let (text, conf) = if use_external {
+        let (text, conf) = if use_gigaam {
+            let engine = gigaam_engine.as_ref().unwrap();
+            let text = engine
+                .transcribe_audio(segment.samples.clone())
+                .await
+                .map_err(|e| anyhow!("GigaAM transcription failed on segment {}: {}", i, e))?;
+            // Greedy transducer decoding reports no confidence
+            (text, 0.9f32)
+        } else if use_external {
             let provider = external_stt.as_ref().unwrap();
             let wav = crate::audio::transcription::external_stt::encode_wav_pcm16(
                 &segment.samples,

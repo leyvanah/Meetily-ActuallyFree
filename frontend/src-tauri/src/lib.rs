@@ -532,6 +532,9 @@ pub fn run() {
                 }
             });
 
+            // Set GigaAM models directory (the engine itself loads on demand)
+            gigaam_engine::commands::set_models_directory(&_app.handle());
+
             // Initialize ModelManager for summary engine (async, non-blocking)
             let app_handle_for_model_manager = _app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -668,6 +671,15 @@ pub fn run() {
             parakeet_engine::commands::parakeet_cancel_download,
             parakeet_engine::commands::parakeet_delete_corrupted_model,
             parakeet_engine::commands::open_parakeet_models_folder,
+            // GigaAM (Russian) commands
+            gigaam_engine::commands::gigaam_init,
+            gigaam_engine::commands::gigaam_get_model_status,
+            gigaam_engine::commands::gigaam_is_model_loaded,
+            gigaam_engine::commands::gigaam_load_model,
+            gigaam_engine::commands::gigaam_unload_model,
+            gigaam_engine::commands::gigaam_download_model,
+            gigaam_engine::commands::gigaam_cancel_download,
+            gigaam_engine::commands::gigaam_delete_model,
             // Parallel processing commands
             whisper_engine::parallel_commands::initialize_parallel_processor,
             whisper_engine::parallel_commands::start_parallel_processing,
