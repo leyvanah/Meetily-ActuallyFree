@@ -9,11 +9,12 @@ import { Label } from './ui/label';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
 import { ExternalSttSettings } from './ExternalSttSettings';
+import { GigaamModelManager } from './GigaamModelManager';
 import type { RawModelInfo } from '@/hooks/useTranscriptionModels';
 import { isVisibleParakeetModel } from '@/lib/parakeet';
 
 export interface TranscriptModelProps {
-    provider: 'localWhisper' | 'parakeet' | 'externalStt' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+    provider: 'localWhisper' | 'parakeet' | 'gigaam' | 'externalStt' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
     model: string;
     apiKey?: string | null;
 }
@@ -119,7 +120,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             });
     }, []);
 
-    const saveLiveConfig = async (provider: 'localWhisper' | 'parakeet' | 'externalStt', model: string): Promise<boolean> => {
+    const saveLiveConfig = async (provider: 'localWhisper' | 'parakeet' | 'gigaam' | 'externalStt', model: string): Promise<boolean> => {
         if (liveSaveInFlightRef.current) return false;
         liveSaveInFlightRef.current = true;
         setIsSavingLive(true);
@@ -238,7 +239,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         || installedWhisperModels[0];
     const effectivePostCallProvider = postCallConfig.provider === 'live'
         // "Same as live" can also point at the external service, which has no card here
-        ? (uiProvider === 'localWhisper' ? 'whisper' : uiProvider === 'parakeet' ? 'parakeet' : 'externalStt')
+        ? (uiProvider === 'localWhisper' ? 'whisper' : uiProvider === 'parakeet' ? 'parakeet' : uiProvider)
         : postCallConfig.provider;
     const effectivePostCallModel = postCallConfig.provider === 'live'
         ? transcriptModelConfig.model
@@ -376,6 +377,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </Button>
                     )}
                 </div>
+
+                <GigaamModelManager
+                    isSelected={uiProvider === 'gigaam'}
+                    disabled={isSavingLive}
+                    onSelect={(modelName) => saveLiveConfig('gigaam', modelName)}
+                />
 
                 <ExternalSttSettings
                     isSelected={uiProvider === 'externalStt'}

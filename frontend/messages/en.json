@@ -829,7 +829,20 @@
     "externalSttTest": "Test connection",
     "externalSttTestOk": "The service answered in {ms} ms",
     "externalSttTestFailed": "The service did not answer: {reason}",
-    "externalSttLoadFailed": "Could not load the external service settings"
+    "externalSttLoadFailed": "Could not load the external service settings",
+    "gigaamBadge": "Best for Russian",
+    "gigaamDescription": "The Russian GigaAM v3 model (Sber) runs inside the app with no external service, and adds punctuation and capitalisation so the transcript reads easily. Russian only.",
+    "gigaamSizeHint": "Needs a {size} MB download",
+    "gigaamDownload": "Download the model ({size} MB)",
+    "gigaamResumeDownload": "Resume the download",
+    "gigaamDownloading": "Downloading… {percent}%",
+    "gigaamDownloadingWithSpeed": "Downloading… {percent}% ({speed} MB/s)",
+    "gigaamCancel": "Cancel",
+    "gigaamInstalled": "Model installed ({size} MB)",
+    "gigaamDelete": "Delete the model",
+    "gigaamDeleteBlocked": "Pick another transcription model first",
+    "gigaamDownloadFailed": "Could not download the GigaAM model",
+    "gigaamStatusFailed": "Could not check the GigaAM model status"
   },
   "person": {
     "overviewPrompt": "Create a concise profile overview of this person based only on their meeting records. Cover recurring topics, decisions, commitments, collaboration patterns, and recent changes. Cite the relevant meeting title and date for every substantive point, and clearly distinguish recorded facts from inference. Answer in English.",
