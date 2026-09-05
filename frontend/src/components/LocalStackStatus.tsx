@@ -78,7 +78,7 @@ export function LocalStackStatus() {
       setStatus(s);
     } catch (e) {
       console.error('get_local_stack_status failed', e);
-      toast.error('Could not read local stack status');
+      toast.error(t('localStackReadFailed'));
     }
   }, []);
 

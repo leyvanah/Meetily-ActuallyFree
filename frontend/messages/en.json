@@ -1188,6 +1188,14 @@
     "postCallRetry": "Retry",
     "postCallEnhance": "Enhance meeting",
     "postCallKeepReviewing": "You can keep reviewing the live transcript while this finishes.",
-    "postCallIdentifyingSpeakers": "{count, plural, one {Identifying # speaker…} other {Identifying # speakers…}}"
+    "postCallIdentifyingSpeakers": "{count, plural, one {Identifying # speaker…} other {Identifying # speakers…}}",
+    "pickerAria": "Pick summary language",
+    "pickerSearch": "Search language…",
+    "pickerAuto": "Auto",
+    "pickerNoMatches": "No matches",
+    "pickerRecentlyUsed": "Recently Used",
+    "pickerOtherLanguages": "Other Languages",
+    "pickerAllLanguages": "All Languages",
+    "localStackReadFailed": "Could not read local stack status"
   }
 }

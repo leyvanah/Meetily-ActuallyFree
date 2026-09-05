@@ -1188,6 +1188,14 @@
     "postCallRetry": "Повторить",
     "postCallEnhance": "Уточнить встречу",
     "postCallKeepReviewing": "Пока идёт обработка, живой транскрипт можно продолжать читать.",
-    "postCallIdentifyingSpeakers": "{count, plural, one {Определяем # спикера…} few {Определяем # спикеров…} many {Определяем # спикеров…} other {Определяем # спикеров…}}"
+    "postCallIdentifyingSpeakers": "{count, plural, one {Определяем # спикера…} few {Определяем # спикеров…} many {Определяем # спикеров…} other {Определяем # спикеров…}}",
+    "pickerAria": "Выбрать язык саммари",
+    "pickerSearch": "Поиск языка…",
+    "pickerAuto": "Авто",
+    "pickerNoMatches": "Ничего не найдено",
+    "pickerRecentlyUsed": "Недавние",
+    "pickerOtherLanguages": "Другие языки",
+    "pickerAllLanguages": "Все языки",
+    "localStackReadFailed": "Не удалось прочитать состояние локального стека"
   }
 }
