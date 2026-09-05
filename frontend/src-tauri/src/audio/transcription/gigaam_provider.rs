@@ -7,6 +7,9 @@ use async_trait::async_trait;
 use log::warn;
 use std::sync::Arc;
 
+/// Shorter than this the encoder has almost nothing to subsample (0.2 s at 16 kHz).
+const MIN_SAMPLES: usize = 3200;
+
 /// GigaAM transcription provider (wraps GigaamEngine)
 pub struct GigaamProvider {
     engine: Arc<crate::gigaam_engine::GigaamEngine>,
@@ -25,6 +28,13 @@ impl TranscriptionProvider for GigaamProvider {
         audio: Vec<f32>,
         language: Option<String>,
     ) -> std::result::Result<TranscriptResult, TranscriptionError> {
+        if audio.len() < MIN_SAMPLES {
+            return Err(TranscriptionError::AudioTooShort {
+                samples: audio.len(),
+                minimum: MIN_SAMPLES,
+            });
+        }
+
         // GigaAM is a Russian-only model; the language hint has nothing to select
         if let Some(language) = language
             .as_deref()

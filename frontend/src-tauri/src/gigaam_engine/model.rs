@@ -31,6 +31,8 @@ const WINDOW_STEP: f32 = 0.01;
 const MAX_TOKENS_PER_STEP: usize = 3;
 const PRED_HIDDEN: usize = 320;
 const ENCODER_DIM: usize = 768;
+/// Fewer feature frames than this and the encoder has nothing to subsample.
+const MIN_FRAMES: usize = 16;
 
 static DECODE_SPACE_RE: Lazy<Result<Regex, regex::Error>> =
     Lazy::new(|| Regex::new(r"\A\s|\s\B|(\s)\b"));
@@ -184,7 +186,9 @@ impl GigaamModel {
     /// Returns the encoded sequence as `[frames][ENCODER_DIM]` plus its length.
     fn encode(&mut self, samples: &[f32]) -> Result<(ArrayD<f32>, usize), GigaamError> {
         let (features, frames) = self.features.compute(samples);
-        if frames == 0 {
+        // The encoder subsamples by 4 and convolves over 5 frames; anything
+        // shorter than that carries no speech worth decoding anyway.
+        if frames < MIN_FRAMES {
             return Ok((ArrayD::zeros(ndarray::IxDyn(&[0, ENCODER_DIM])), 0));
         }
 
