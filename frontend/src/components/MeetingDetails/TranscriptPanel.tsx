@@ -15,6 +15,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Transcript, TranscriptSegmentData } from '@/types';
 import { Calendar, Clock } from 'lucide-react';
 import { SpeakerRenameDialog } from './SpeakerRenameDialog';
@@ -49,11 +50,11 @@ interface TranscriptPanelProps {
   onSpeakerRenamed?: (rename: { from: string; to: string; count: number; removedName: boolean }) => void;
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+function fmtDate(d: Date, locale: string): string {
+  return d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
 }
-function fmtTime(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function fmtTime(d: Date, locale: string): string {
+  return d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 }
 
 export function TranscriptPanel({
@@ -79,6 +80,8 @@ export function TranscriptPanel({
   onRefetchTranscripts,
   onSpeakerRenamed,
 }: TranscriptPanelProps) {
+  const t = useTranslations('meetingDetails');
+  const locale = useLocale();
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
 
   const convertedSegments = useMemo(() => {
@@ -104,17 +107,17 @@ export function TranscriptPanel({
     );
     const end = durationSec > 0 ? new Date(start.getTime() + durationSec * 1000) : null;
     return {
-      dateLabel: fmtDate(start),
-      timeLabel: end ? `${fmtTime(start)} — ${fmtTime(end)}` : fmtTime(start),
+      dateLabel: fmtDate(start, locale),
+      timeLabel: end ? `${fmtTime(start, locale)} — ${fmtTime(end, locale)}` : fmtTime(start, locale),
     };
-  }, [createdAt, convertedSegments]);
+  }, [createdAt, convertedSegments, locale]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--af-bg)]">
       {/* Header: title + date/time */}
       <div className="min-w-0 px-4 pt-5 sm:px-6 sm:pt-6 lg:px-8">
         <h1 className="truncate text-xl font-bold text-[var(--af-text)] sm:text-2xl">
-          {title || 'Untitled meeting'}
+          {title || t('untitledMeeting')}
         </h1>
         {(dateLabel || timeLabel) && (
           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--af-text-2)]">
@@ -138,7 +141,7 @@ export function TranscriptPanel({
           can be narrow even when the overall window is wide. */}
       <div className="mt-4 flex min-w-0 items-center gap-2 border-b border-[var(--af-border)] px-4 sm:mt-5 sm:gap-3 sm:px-6 lg:px-8">
         <span className="relative -mb-px shrink-0 py-2 text-sm font-medium text-[var(--af-accent)]">
-          Transcript
+          {t('transcriptTab')}
           <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--af-accent)]" />
         </span>
         <div className="transcript-actions-container ml-auto min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 no-scrollbar">

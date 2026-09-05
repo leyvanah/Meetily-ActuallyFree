@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { Unlink, UserRound } from 'lucide-react';
@@ -47,6 +48,8 @@ export function SpeakerRenameDialog({
   onOpenChange,
   onRenamed,
 }: SpeakerRenameDialogProps) {
+  const t = useTranslations('meetingDetails');
+  const tc = useTranslations('common');
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [userName, setUserName] = useState('');
@@ -76,13 +79,14 @@ export function SpeakerRenameDialog({
         to: next,
       });
       if (result.removedName) {
-        toast.success('Name removed', {
-          description: `${result.speaker} is now meeting-local and no longer linked to a person. ${result.count} transcript ${result.count === 1 ? 'segment' : 'segments'} updated.`,
+        toast.success(t('speakerNameRemovedTitle'), {
+          description: t('speakerNameRemovedDescription', { speaker: result.speaker, count: result.count }),
         });
       } else {
-        const displayName = result.speaker === 'You' && userName ? `${userName} (You)` : result.speaker;
-        toast.success(`Renamed to ${displayName}`, {
-          description: `${result.count} transcript ${result.count === 1 ? 'segment' : 'segments'} updated.`,
+        const displayName =
+          result.speaker === 'You' && userName ? t('speakerYouWithName', { name: userName }) : result.speaker;
+        toast.success(t('speakerRenamedTitle', { name: displayName }), {
+          description: t('speakerRenamedDescription', { count: result.count }),
         });
       }
       onOpenChange(false);
@@ -93,7 +97,7 @@ export function SpeakerRenameDialog({
         removedName: result.removedName,
       });
     } catch (e) {
-      toast.error('Rename failed', {
+      toast.error(t('speakerRenameFailed'), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -106,13 +110,14 @@ export function SpeakerRenameDialog({
       <DialogContent aria-describedby={undefined} className="sm:max-w-md">
         <DialogTitle className="flex items-center gap-2 text-base">
           <UserRound size={18} className="text-blue-500" />
-          Who is {speaker}?
+          {t('speakerWhoIs', { speaker: speaker ?? '' })}
         </DialogTitle>
 
         <div className="mt-2 space-y-3">
           <p className="text-sm text-gray-500">
-            Changes every line spoken by <strong>{speaker}</strong> in this meeting.
-            Clear the field and save to remove an assigned name.
+            {t.rich('speakerRenameHint', {
+              name: () => <strong>{speaker}</strong>,
+            })}
           </p>
 
           <input
@@ -126,7 +131,7 @@ export function SpeakerRenameDialog({
                 submit(name);
               }
             }}
-            placeholder="e.g. Dima"
+            placeholder={t('speakerNamePlaceholder')}
             className="w-full rounded-md border border-[var(--af-border,#d1d5db)] bg-[var(--af-panel-2,#fff)] px-3 py-2 text-sm text-[var(--af-text,#111827)] outline-none focus:ring-2 focus:ring-blue-500"
           />
 
@@ -139,7 +144,7 @@ export function SpeakerRenameDialog({
             className="flex w-full items-center gap-2 rounded-md border border-[var(--af-border,#e5e7eb)] px-3 py-2 text-left text-sm text-gray-600 transition-colors hover:border-blue-400 hover:text-blue-500"
           >
             <UserRound size={15} />
-            This is me{userName ? ` — ${userName}` : ''}
+            {userName ? t('speakerThisIsMeNamed', { name: userName }) : t('speakerThisIsMe')}
           </button>
 
           {canRemoveName && (
@@ -150,14 +155,14 @@ export function SpeakerRenameDialog({
               className="flex w-full items-center gap-2 rounded-md border border-red-500/30 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:border-red-500/60 hover:bg-red-500/10"
             >
               <Unlink size={15} />
-              Remove name
+              {t('speakerRemoveName')}
             </button>
           )}
         </div>
 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tc('cancel')}
           </Button>
           <Button
             size="sm"
@@ -165,7 +170,7 @@ export function SpeakerRenameDialog({
             disabled={(!name.trim() && !canRemoveName) || saving}
             onClick={() => submit(name)}
           >
-            {saving ? 'Saving…' : name.trim() ? 'Rename' : 'Remove name'}
+            {saving ? t('speakerSaving') : name.trim() ? t('speakerRename') : t('speakerRemoveName')}
           </Button>
         </div>
       </DialogContent>
