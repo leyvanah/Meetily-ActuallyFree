@@ -51,6 +51,7 @@ pub mod openrouter;
 pub mod live_assistant;
 pub mod meeting_detection;
 pub mod minibar;
+pub mod gigaam_engine;
 pub mod parakeet_engine;
 pub mod paths;
 pub mod state;
