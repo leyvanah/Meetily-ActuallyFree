@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -30,11 +31,14 @@ import { Summary, Transcript } from '@/types';
 
 type Bucket = 'summary' | 'actions' | 'topics' | 'insights';
 
+// Headings come from the model, so they follow the summary language, not the UI
+// language. Both English and Russian wordings are matched or a Russian summary
+// would fall through to `insights` and the panel would render one flat list.
 const RE = {
-  actions: /(action|task|to-?do|next[ -]?step|follow[ -]?up|deliverable)/i,
-  topics: /(topic|theme|discuss|agenda|subject)/i,
-  summary: /(summary|overview|abstract|tl;?dr|key[ -]?point|highlight|recap)/i,
-  insights: /(insight|decision|risk|take[ -]?away|conclusion|outcome|blocker|learn)/i,
+  actions: /(action|task|to-?do|next[ -]?step|follow[ -]?up|deliverable|задач|действи|шаг|поручен)/i,
+  topics: /(topic|theme|discuss|agenda|subject|тем[аы]|обсужд|повестк)/i,
+  summary: /(summary|overview|abstract|tl;?dr|key[ -]?point|highlight|recap|саммари|резюме|обзор|кратк|основн|главн)/i,
+  insights: /(insight|decision|risk|take[ -]?away|conclusion|outcome|blocker|learn|решени|риск|вывод|итог|наблюден)/i,
 };
 
 function classify(h: string): Bucket {
@@ -75,7 +79,7 @@ function blocksToMarkdown(blocks: any[]): string {
 function headingOf(line: string): string | null {
   let m = line.match(/^#{1,6}\s+(.*)$/); if (m) return m[1].replace(/[:*]+$/, '').trim();
   m = line.match(/^\*\*(.+?)\*\*:?\s*$/); if (m) return m[1].trim();
-  m = line.match(/^([A-Z][A-Za-z /&]{2,40}):\s*$/); if (m) return m[1].trim();
+  m = line.match(/^([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё /&]{2,40}):\s*$/); if (m) return m[1].trim();
   return null;
 }
 
@@ -200,9 +204,9 @@ function parseActionTable(rows: string[]): ParsedAction[] {
   while (h < grid.length && isSeparatorRow(grid[h])) h++;
   const header = (grid[h] ?? []).map((c) => stripCell(c).toLowerCase());
   const col = (re: RegExp) => header.findIndex((c) => re.test(c));
-  const ownerIdx = col(/owner|assignee|assigned|who|responsible/);
-  const taskIdx = col(/task|action|item|descr|to-?do|deliverable|next/);
-  const dueIdx = col(/due|date|when|deadline|timeline/);
+  const ownerIdx = col(/owner|assignee|assigned|who|responsible|ответствен|исполнител|кто/);
+  const taskIdx = col(/task|action|item|descr|to-?do|deliverable|next|задач|действи|описан|шаг/);
+  const dueIdx = col(/due|date|when|deadline|timeline|срок|дата|когда/);
   const timeIdx = col(/time.?stamp|timestamp/);
 
   const items: ParsedAction[] = [];
@@ -275,6 +279,7 @@ export function InsightTabs({
   transcripts,
   generating = false,
 }: InsightTabsProps) {
+  const t = useTranslations('meetingDetails');
   const [done, setDone] = useState<Set<string>>(new Set());
 
   const buckets = useMemo(() => normalize(aiSummary), [aiSummary]);
@@ -314,7 +319,7 @@ export function InsightTabs({
       const answer = await invoke<string>('ask_live_assistant', { question: q, transcriptContext, persona: null });
       setHistory((prev) => prev.map((x) => (x.id === id ? { ...x, answer, status: 'done' } : x)));
     } catch (err) {
-      const msg = typeof err === 'string' ? err : (err as any)?.message || 'Request failed';
+      const msg = typeof err === 'string' ? err : (err as any)?.message || t('askRequestFailed');
       setHistory((prev) => prev.map((x) => (x.id === id ? { ...x, answer: `⚠️ ${msg}`, status: 'error' } : x)));
     } finally {
       setBusy(false);
@@ -336,23 +341,21 @@ export function InsightTabs({
         <section>
           <div className="mb-3 flex items-center gap-2">
             <Sparkles size={18} className="text-cyan-400" />
-            <h3 className="text-base font-semibold text-[var(--af-text)]">AI Summary</h3>
+            <h3 className="text-base font-semibold text-[var(--af-text)]">{t('aiSummaryHeading')}</h3>
           </div>
           {generating ? (
             <div className="flex items-center gap-3 py-2 text-sm text-[var(--af-text-2)]">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--af-accent)] border-t-transparent" />
-              Generating summary…
+              {t('generatingSummary')}
             </div>
           ) : !hasSummary ? (
             <div className="rounded-xl border border-dashed border-[var(--af-border-strong)] p-8 text-center">
               <Sparkles size={26} className="mx-auto mb-3 text-cyan-400" />
-              <p className="mb-4 text-sm text-[var(--af-text-2)]">
-                No summary yet. Generate an AI summary with key points, action items and topics.
-              </p>
+              <p className="mb-4 text-sm text-[var(--af-text-2)]">{t('noSummaryYet')}</p>
               <p className="text-xs text-[var(--af-text-3)]">
                 {transcripts.length > 0
-                  ? 'Use the summary toolbar above to choose a template and generate.'
-                  : 'A transcript is required before a summary can be generated.'}
+                  ? t('summaryHintWithTranscript')
+                  : t('summaryHintNoTranscript')}
               </p>
             </div>
           ) : (
@@ -362,7 +365,7 @@ export function InsightTabs({
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{summaryText}</ReactMarkdown>
                 </div>
               ) : (
-                <p className="text-sm text-[var(--af-text-3)]">No summary text available.</p>
+                <p className="text-sm text-[var(--af-text-3)]">{t('noSummaryText')}</p>
               )}
             </>
           )}
@@ -372,19 +375,19 @@ export function InsightTabs({
         <section>
           <div className="mb-1 flex items-center gap-2">
             <Sparkles size={18} className="text-cyan-400" />
-            <h3 className="text-base font-semibold text-[var(--af-text)]">Action Items</h3>
+            <h3 className="text-base font-semibold text-[var(--af-text)]">{t('actionItemsHeading')}</h3>
             {!generating && actions.length > 0 && <span className="text-sm font-medium text-[var(--af-text-3)]">{actions.length}</span>}
             <div className="ml-auto">
-              <ToolbarButton icon={<Plus size={14} />} onClick={() => toast.info('Adding action items is coming soon')}>Add action item</ToolbarButton>
+              <ToolbarButton icon={<Plus size={14} />} onClick={() => toast.info(t('addActionItemSoon'))}>{t('addActionItem')}</ToolbarButton>
             </div>
           </div>
           {generating ? (
             <div className="flex items-center gap-3 py-2 text-sm text-[var(--af-text-2)]">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--af-accent)] border-t-transparent" />
-              {hasSummary ? 'Regenerating action items…' : 'Generating action items…'}
+              {hasSummary ? t('regeneratingActionItems') : t('generatingActionItems')}
             </div>
           ) : actions.length === 0 ? (
-            <div className="py-6 text-center text-sm text-[var(--af-text-3)]">No action items were identified.</div>
+            <div className="py-6 text-center text-sm text-[var(--af-text-3)]">{t('noActionItems')}</div>
           ) : (
             <div>
               {actions.map((a, i) => {
@@ -395,7 +398,7 @@ export function InsightTabs({
                     <button
                       onClick={() => toggleDone(key)}
                       className="mt-0.5 shrink-0 text-[var(--af-text-3)] transition-colors hover:text-[var(--af-accent)]"
-                      title={isDone ? 'Mark as not done' : 'Mark as done'}
+                      title={isDone ? t('markAsNotDone') : t('markAsDone')}
                     >
                       {isDone ? <CheckCircle2 size={18} className="text-[var(--af-accent)]" /> : <Circle size={18} />}
                     </button>
@@ -435,14 +438,14 @@ export function InsightTabs({
 
         {/* Key Topics */}
         <section>
-          <h3 className="mb-3 text-base font-semibold text-[var(--af-text)]">Key Topics</h3>
+          <h3 className="mb-3 text-base font-semibold text-[var(--af-text)]">{t('keyTopicsHeading')}</h3>
           {generating ? (
             <div className="flex items-center gap-3 py-2 text-sm text-[var(--af-text-2)]">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--af-accent)] border-t-transparent" />
-              {hasSummary ? 'Regenerating topics…' : 'Generating topics…'}
+              {hasSummary ? t('regeneratingTopics') : t('generatingTopics')}
             </div>
           ) : buckets.topics.length === 0 ? (
-            <div className="py-2 text-sm text-[var(--af-text-3)]">No key topics were identified.</div>
+            <div className="py-2 text-sm text-[var(--af-text-3)]">{t('noTopics')}</div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {buckets.topics.map((t, i) => (
@@ -471,7 +474,7 @@ export function InsightTabs({
                 <div className="w-fit max-w-[92%] rounded-lg bg-[var(--af-panel-2)] px-3 py-2 text-sm text-[var(--af-text)]">
                   {qa.status === 'pending' ? (
                     <span className="inline-flex items-center gap-1 text-[var(--af-text-3)]">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--af-text-3)]" /> Thinking…
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--af-text-3)]" /> {t('thinking')}
                     </span>
                   ) : (
                     <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1">
@@ -490,14 +493,14 @@ export function InsightTabs({
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask AI about this meeting…"
+            placeholder={t('askAiPlaceholder')}
             className="af-bare flex-1 resize-none border-0 bg-transparent py-1 text-sm text-[var(--af-text)] placeholder:text-[var(--af-text-3)] focus:outline-none focus:ring-0"
           />
           <button
             onClick={ask}
             disabled={busy || !question.trim()}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--af-accent)] text-[var(--af-accent-contrast)] transition-[filter] hover:brightness-110 disabled:opacity-40"
-            title="Ask AI"
+            title={t('askAi')}
           >
             <Send size={16} />
           </button>
