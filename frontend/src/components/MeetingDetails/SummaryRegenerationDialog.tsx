@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,13 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
-const suggestions = [
-  'Focus on action items and owners',
-  'Keep it short - 5 bullet points max',
-  'Highlight decisions and open questions',
-  'Use speaker names from the transcript',
-];
 
 export function SummaryRegenerationDialog({
   open,
@@ -32,6 +26,13 @@ export function SummaryRegenerationDialog({
   speakerNamesChanged?: boolean;
   onRegenerate: (context: string) => Promise<void>;
 }) {
+  const t = useTranslations('meetingDetails');
+  const suggestions = [
+    t('suggestionActionItems'),
+    t('suggestionShort'),
+    t('suggestionDecisions'),
+    t('suggestionSpeakerNames'),
+  ];
   const [context, setContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,12 +56,12 @@ export function SummaryRegenerationDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles size={18} className="text-blue-500" />
-            {speakerNamesChanged ? 'Update summary with speaker names?' : 'Regenerate summary'}
+            {speakerNamesChanged ? t('regenSpeakersTitle') : t('regenerateDialogTitle')}
           </DialogTitle>
           <DialogDescription>
             {speakerNamesChanged
-              ? 'The transcript now has updated speaker names. Regenerate the summary to use that name context.'
-              : 'Add more context or instructions for this regeneration, or leave it blank to regenerate normally.'}
+              ? t('regenSpeakersDescription')
+              : t('regenDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -74,7 +75,7 @@ export function SummaryRegenerationDialog({
               void submit();
             }
           }}
-          placeholder="e.g. Focus on decisions and next steps; ignore small talk"
+          placeholder={t('regenPlaceholder')}
           rows={4}
           className="w-full resize-none rounded-md border border-[var(--af-border)] bg-[var(--af-panel-2)] px-3 py-2 text-sm text-[var(--af-text)] outline-none focus:ring-2 focus:ring-blue-500"
         />
@@ -94,10 +95,10 @@ export function SummaryRegenerationDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
-            Not now
+            {t('regenNotNow')}
           </Button>
           <Button type="button" disabled={submitting} onClick={() => void submit()}>
-            {submitting ? 'Starting...' : context.trim() ? 'Regenerate with context' : 'Regenerate'}
+            {submitting ? t('regenStarting') : context.trim() ? t('regenWithContext') : t('regenerate')}
           </Button>
         </DialogFooter>
       </DialogContent>

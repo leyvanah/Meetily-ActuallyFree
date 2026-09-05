@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Clipboard, FileJson, FileText, FileType, Files, ScrollText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,24 +14,27 @@ import {
 } from '@/components/ui/dialog';
 import type { MeetingExportContent, MeetingExportFormat } from '@/hooks/meeting-details/useCopyOperations';
 
-const contentOptions: Array<{ value: MeetingExportContent; label: string; description: string }> = [
-  { value: 'transcript', label: 'Transcript', description: 'Everything said, with timestamps' },
-  { value: 'summary', label: 'Summary', description: 'The current AI meeting summary' },
-  { value: 'both', label: 'Transcript + Summary', description: 'A complete meeting record' },
+// Labels and descriptions are resolved per render so they follow the active locale;
+// only the value/icon pairs are static.
+const contentOptions: Array<{ value: MeetingExportContent; labelKey: string; descriptionKey: string }> = [
+  { value: 'transcript', labelKey: 'exportContentTranscript', descriptionKey: 'exportContentTranscriptDescription' },
+  { value: 'summary', labelKey: 'exportContentSummary', descriptionKey: 'exportContentSummaryDescription' },
+  { value: 'both', labelKey: 'exportContentBoth', descriptionKey: 'exportContentBothDescription' },
 ];
 
 const formatOptions: Array<{
   value: MeetingExportFormat;
   label: string;
-  description: string;
+  labelKey?: string;
+  descriptionKey: string;
   icon: typeof FileText;
 }> = [
-  { value: 'pdf', label: 'PDF', description: 'Ready to share or print', icon: FileText },
-  { value: 'docx', label: 'Word', description: 'Editable .docx document', icon: FileType },
-  { value: 'txt', label: 'Text', description: 'Plain .txt file', icon: ScrollText },
-  { value: 'markdown', label: 'Markdown', description: 'Formatted .md file', icon: Files },
-  { value: 'json', label: 'JSON', description: 'Rendered content as JSON', icon: FileJson },
-  { value: 'clipboard', label: 'Clipboard', description: 'Copy formatted content', icon: Clipboard },
+  { value: 'pdf', label: 'PDF', descriptionKey: 'exportFormatPdfDescription', icon: FileText },
+  { value: 'docx', label: 'Word', labelKey: 'exportFormatWord', descriptionKey: 'exportFormatWordDescription', icon: FileType },
+  { value: 'txt', label: 'Text', labelKey: 'exportFormatText', descriptionKey: 'exportFormatTextDescription', icon: ScrollText },
+  { value: 'markdown', label: 'Markdown', descriptionKey: 'exportFormatMarkdownDescription', icon: Files },
+  { value: 'json', label: 'JSON', descriptionKey: 'exportFormatJsonDescription', icon: FileJson },
+  { value: 'clipboard', label: 'Clipboard', labelKey: 'exportFormatClipboard', descriptionKey: 'exportFormatClipboardDescription', icon: Clipboard },
 ];
 
 export function MeetingExportDialog({
@@ -46,6 +50,7 @@ export function MeetingExportDialog({
   hasSummary: boolean;
   onExport: (content: MeetingExportContent, format: MeetingExportFormat) => Promise<boolean>;
 }) {
+  const t = useTranslations('meetingDetails');
   const [step, setStep] = useState<'content' | 'format'>('content');
   const [content, setContent] = useState<MeetingExportContent>('both');
   const [exporting, setExporting] = useState(false);
@@ -74,11 +79,18 @@ export function MeetingExportDialog({
     <Dialog open={open} onOpenChange={(nextOpen) => !exporting && onOpenChange(nextOpen)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{step === 'content' ? 'What do you want to export?' : 'How should it be exported?'}</DialogTitle>
+          <DialogTitle>{step === 'content' ? t('exportStepContentTitle') : t('exportStepFormatTitle')}</DialogTitle>
           <DialogDescription>
             {step === 'content'
-              ? 'Transcript + Summary is selected by default for a complete meeting record.'
-              : `Choose a format for the ${content === 'both' ? 'transcript and summary' : content}.`}
+              ? t('exportStepContentDescription')
+              : t('exportStepFormatDescription', {
+                  what:
+                    content === 'both'
+                      ? t('exportWhatBoth')
+                      : content === 'transcript'
+                        ? t('exportWhatTranscript')
+                        : t('exportWhatSummary'),
+                })}
           </DialogDescription>
         </DialogHeader>
 
@@ -94,9 +106,9 @@ export function MeetingExportDialog({
                 onClick={() => setContent(option.value)}
               >
                 <span>
-                  <span className="block text-sm font-semibold">{option.label}</span>
+                  <span className="block text-sm font-semibold">{t(option.labelKey)}</span>
                   <span className="block text-xs font-normal opacity-70">
-                    {isAvailable(option.value) ? option.description : 'Not available for this meeting'}
+                    {isAvailable(option.value) ? t(option.descriptionKey) : t('exportNotAvailable')}
                   </span>
                 </span>
               </Button>
@@ -117,8 +129,8 @@ export function MeetingExportDialog({
                 >
                   <Icon size={17} />
                   <span>
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="block text-[11px] font-normal opacity-70">{option.description}</span>
+                    <span className="block text-sm font-semibold">{option.labelKey ? t(option.labelKey) : option.label}</span>
+                    <span className="block text-[11px] font-normal opacity-70">{t(option.descriptionKey)}</span>
                   </span>
                 </Button>
               );
@@ -129,12 +141,12 @@ export function MeetingExportDialog({
         <DialogFooter>
           {step === 'format' && (
             <Button type="button" variant="outline" disabled={exporting} onClick={() => setStep('content')}>
-              Back
+              {t('exportBack')}
             </Button>
           )}
           {step === 'content' && (
             <Button type="button" disabled={!isAvailable(content)} onClick={() => setStep('format')}>
-              Choose format
+              {t('exportChooseFormat')}
             </Button>
           )}
         </DialogFooter>
