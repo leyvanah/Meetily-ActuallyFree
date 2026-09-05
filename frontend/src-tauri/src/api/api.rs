@@ -6,6 +6,7 @@ use tauri::{AppHandle, Runtime};
 use tauri_plugin_store::StoreExt;
 
 use crate::{
+    audio::transcription::external_stt::{ExternalSttConfig, ExternalSttTestResult},
     database::{
         models::MeetingModel,
         repositories::{
@@ -736,6 +737,54 @@ pub async fn api_save_transcript_config<R: Runtime>(
     Ok(
         serde_json::json!({ "status": "success", "message": "Transcript configuration saved successfully" }),
     )
+}
+
+/// Read the external HTTP STT settings, falling back to the defaults when the
+/// owner has never opened that section.
+pub async fn load_external_stt_config(
+    pool: &sqlx::SqlitePool,
+) -> Result<ExternalSttConfig, String> {
+    let raw = SettingsRepository::get_external_stt_config(pool)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    match raw {
+        Some(json) if !json.trim().is_empty() => serde_json::from_str(&json)
+            .map_err(|error| format!("Stored external STT settings are unreadable: {}", error)),
+        _ => Ok(ExternalSttConfig::default()),
+    }
+}
+
+#[tauri::command]
+pub async fn api_get_external_stt_config(
+    state: tauri::State<'_, AppState>,
+) -> Result<ExternalSttConfig, String> {
+    load_external_stt_config(state.db_manager.pool()).await
+}
+
+#[tauri::command]
+pub async fn api_save_external_stt_config(
+    state: tauri::State<'_, AppState>,
+    config: ExternalSttConfig,
+) -> Result<(), String> {
+    config.validate()?;
+    let json = serde_json::to_string(&config)
+        .map_err(|error| format!("Failed to serialize external STT settings: {}", error))?;
+
+    SettingsRepository::save_external_stt_config(state.db_manager.pool(), Some(&json))
+        .await
+        .map_err(|error| error.to_string())?;
+
+    log_info!("Saved external STT configuration.");
+    Ok(())
+}
+
+/// Health check for the "Test connection" button in the settings.
+#[tauri::command]
+pub async fn api_test_external_stt(
+    config: ExternalSttConfig,
+) -> Result<ExternalSttTestResult, String> {
+    crate::audio::transcription::external_stt::test_connection(config).await
 }
 
 #[tauri::command]

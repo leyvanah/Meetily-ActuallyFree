@@ -51,6 +51,14 @@ impl TranscriptionEngine {
 // MODEL VALIDATION AND INITIALIZATION
 // ============================================================================
 
+/// Read the external STT settings straight from the database.
+async fn load_external_stt_config<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<crate::audio::transcription::external_stt::ExternalSttConfig, String> {
+    let state = app.state::<crate::state::AppState>();
+    crate::api::api::load_external_stt_config(state.db_manager.pool()).await
+}
+
 /// Validate that transcription models (Whisper or Parakeet) are ready before starting recording
 pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // Check transcript configuration to determine which engine to validate
@@ -135,10 +143,39 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 }
             }
         }
+        "externalStt" => {
+            info!("🔍 Validating external STT service...");
+            let stt_config = load_external_stt_config(app).await?;
+            stt_config.validate().map_err(|e| {
+                format!("External speech service is not configured: {}", e)
+            })?;
+
+            // Fail before the recording starts rather than halfway through it.
+            match crate::audio::transcription::external_stt::test_connection(stt_config.clone())
+                .await
+            {
+                Ok(result) => {
+                    info!(
+                        "✅ External STT service at {} answered in {} ms",
+                        stt_config.display_name(),
+                        result.latency_ms
+                    );
+                    Ok(())
+                }
+                Err(e) => {
+                    warn!("❌ External STT service check failed: {}", e);
+                    Err(format!(
+                        "The speech service at {} is not responding: {}",
+                        stt_config.display_name(),
+                        e
+                    ))
+                }
+            }
+        }
         other => {
             warn!("❌ Unsupported transcription provider for local recording: {}", other);
             Err(format!(
-                "Provider '{}' is not supported for local transcription. Please select 'localWhisper' or 'parakeet'.",
+                "Provider '{}' is not supported for local transcription. Please select 'localWhisper', 'parakeet' or 'externalStt'.",
                 other
             ))
         }
@@ -211,6 +248,17 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     Err("Parakeet engine not initialized. This should not happen after validation.".to_string())
                 }
             }
+        }
+        "externalStt" => {
+            let stt_config = load_external_stt_config(app).await?;
+            info!(
+                "🌐 Initializing external STT provider at {}",
+                stt_config.display_name()
+            );
+            let provider = crate::audio::transcription::external_stt::ExternalSttProvider::new(
+                stt_config,
+            )?;
+            Ok(TranscriptionEngine::Provider(Arc::new(provider)))
         }
         "localWhisper" | _ => {
             info!("🎤 Initializing Whisper transcription engine");

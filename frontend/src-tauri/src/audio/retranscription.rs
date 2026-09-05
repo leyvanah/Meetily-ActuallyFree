@@ -101,6 +101,8 @@ async fn start_retranscription<R: Runtime>(
     initial_prompt: Option<String>,
 ) -> Result<RetranscriptionResult> {
     let use_parakeet = provider.as_deref() == Some("parakeet");
+    // The external service holds its own model - there is nothing local to unload
+    let use_external = provider.as_deref() == Some("externalStt");
     let batch_lease = super::common::acquire_stt_batch_lease().await;
     let result = run_retranscription(
         app.clone(),
@@ -115,7 +117,9 @@ async fn start_retranscription<R: Runtime>(
     drop(batch_lease);
 
     // Unload the engine after the batch job (success, failure, or cancellation)
-    super::common::unload_engine_after_batch(use_parakeet).await;
+    if !use_external {
+        super::common::unload_engine_after_batch(use_parakeet).await;
+    }
 
     // Guard will automatically clear flag on drop
     // No need for manual: RETRANSCRIPTION_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -249,6 +253,7 @@ async fn run_retranscription<R: Runtime>(
 
     // Determine which provider to use (default to whisper)
     let use_parakeet = provider.as_deref() == Some("parakeet");
+    let use_external = provider.as_deref() == Some("externalStt");
 
     info!(
         "Starting retranscription for meeting {} with language {:?}, model {:?}, provider {:?}",
@@ -377,13 +382,18 @@ async fn run_retranscription<R: Runtime>(
     emit_progress(&app, &meeting_id, "transcribing", 25, "Loading transcription engine...");
 
     // Initialize the appropriate engine once (not per-segment)
-    let whisper_engine = if !use_parakeet {
+    let whisper_engine = if !use_parakeet && !use_external {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
     };
     let parakeet_engine = if use_parakeet {
         Some(get_or_init_parakeet(&app, model.as_deref()).await?)
+    } else {
+        None
+    };
+    let external_stt = if use_external {
+        Some(get_or_init_external_stt(&app).await?)
     } else {
         None
     };
@@ -451,7 +461,21 @@ async fn run_retranscription<R: Runtime>(
         }
 
         // Transcribe this segment
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_external {
+            let provider = external_stt.as_ref().unwrap();
+            let wav = crate::audio::transcription::external_stt::encode_wav_pcm16(
+                &segment.samples,
+                16000,
+            );
+            let text = provider
+                .transcribe_wav(wav, language.as_deref())
+                .await
+                .map_err(|e| {
+                    anyhow!("External STT transcription failed on segment {}: {}", i, e)
+                })?;
+            // The service reports no confidence; use the same placeholder as Parakeet
+            (text, 0.9f32)
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())
@@ -733,6 +757,29 @@ async fn get_configured_whisper_model<R: Runtime>(app: &AppHandle<R>) -> Result<
             Ok(DEFAULT_WHISPER_MODEL.to_string())
         }
     }
+}
+
+/// Build the external HTTP STT provider from the saved settings
+async fn get_or_init_external_stt<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Arc<crate::audio::transcription::external_stt::ExternalSttProvider>> {
+    let app_state = app
+        .try_state::<AppState>()
+        .ok_or_else(|| anyhow!("App state not available"))?;
+
+    let config = crate::api::api::load_external_stt_config(app_state.db_manager.pool())
+        .await
+        .map_err(|e| anyhow!(e))?;
+
+    let provider = crate::audio::transcription::external_stt::ExternalSttProvider::new(config)
+        .map_err(|e| anyhow!("External speech service is not configured: {}", e))?;
+
+    info!(
+        "Using external STT service at {} for retranscription",
+        provider.config().display_name()
+    );
+
+    Ok(Arc::new(provider))
 }
 
 /// Get or initialize the Parakeet engine, auto-loading the model if needed

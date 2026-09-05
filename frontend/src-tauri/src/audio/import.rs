@@ -268,6 +268,8 @@ pub async fn start_import<R: Runtime>(
     IMPORT_CANCELLED.store(false, Ordering::SeqCst);
 
     let use_parakeet = provider.as_deref() == Some("parakeet");
+    // The external service holds its own model - there is nothing local to unload
+    let use_external = provider.as_deref() == Some("externalStt");
     let batch_lease = super::common::acquire_stt_batch_lease().await;
     let result = run_import(
         app.clone(),
@@ -281,7 +283,9 @@ pub async fn start_import<R: Runtime>(
     drop(batch_lease);
 
     // Unload the engine after the batch job (success, failure, or cancellation)
-    super::common::unload_engine_after_batch(use_parakeet).await;
+    if !use_external {
+        super::common::unload_engine_after_batch(use_parakeet).await;
+    }
 
     // Guard will automatically clear flag on drop
     // No need for manual: IMPORT_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -335,7 +339,8 @@ async fn run_import<R: Runtime>(
 
     // Determine which provider to use (default to whisper)
     let use_parakeet = provider.as_deref() == Some("parakeet");
-    let initial_prompt = if use_parakeet {
+    let use_external = provider.as_deref() == Some("externalStt");
+    let initial_prompt = if use_parakeet || use_external {
         None
     } else {
         let state = app
@@ -521,13 +526,18 @@ async fn run_import<R: Runtime>(
     emit_progress(&app, "transcribing", 30, "Loading transcription engine...");
 
     // Initialize the appropriate engine
-    let whisper_engine = if !use_parakeet && total_segments > 0 {
+    let whisper_engine = if !use_parakeet && !use_external && total_segments > 0 {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
     };
     let parakeet_engine = if use_parakeet && total_segments > 0 {
         Some(get_or_init_parakeet(&app, model.as_deref()).await?)
+    } else {
+        None
+    };
+    let external_stt = if use_external && total_segments > 0 {
+        Some(get_or_init_external_stt(&app).await?)
     } else {
         None
     };
@@ -592,7 +602,21 @@ async fn run_import<R: Runtime>(
         }
 
         // Transcribe
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_external {
+            let provider = external_stt.as_ref().unwrap();
+            let wav = crate::audio::transcription::external_stt::encode_wav_pcm16(
+                &segment.samples,
+                16000,
+            );
+            let text = provider
+                .transcribe_wav(wav, language.as_deref())
+                .await
+                .map_err(|e| {
+                    anyhow!("External STT transcription failed on segment {}: {}", i, e)
+                })?;
+            // The service reports no confidence; use the same placeholder as Parakeet
+            (text, 0.9f32)
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())
@@ -870,6 +894,29 @@ async fn get_or_init_parakeet<R: Runtime>(
         }
         None => Err(anyhow!("Parakeet engine not initialized")),
     }
+}
+
+/// Build the external HTTP STT provider from the saved settings
+async fn get_or_init_external_stt<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Arc<crate::audio::transcription::external_stt::ExternalSttProvider>> {
+    let app_state = app
+        .try_state::<AppState>()
+        .ok_or_else(|| anyhow!("App state not available"))?;
+
+    let config = crate::api::api::load_external_stt_config(app_state.db_manager.pool())
+        .await
+        .map_err(|e| anyhow!(e))?;
+
+    let provider = crate::audio::transcription::external_stt::ExternalSttProvider::new(config)
+        .map_err(|e| anyhow!("External speech service is not configured: {}", e))?;
+
+    info!(
+        "Using external STT service at {} for import",
+        provider.config().display_name()
+    );
+
+    Ok(Arc::new(provider))
 }
 
 /// Get the configured model from database
