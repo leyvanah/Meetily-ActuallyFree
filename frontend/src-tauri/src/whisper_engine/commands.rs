@@ -460,6 +460,18 @@ pub async fn get_local_stack_status() -> Result<serde_json::Value, String> {
         }
     };
 
+    let (gigaam_loaded, gigaam_model) = {
+        use crate::gigaam_engine::commands::GIGAAM_ENGINE;
+        let engine = {
+            let guard = GIGAAM_ENGINE.lock().unwrap_or_else(|e| e.into_inner());
+            guard.as_ref().cloned()
+        };
+        match engine {
+            Some(e) => (e.is_model_loaded().await, e.get_current_model().await),
+            None => (false, None),
+        }
+    };
+
     let recording = crate::audio::recording_commands::is_recording().await;
     let models_dir = crate::paths::models_dir();
     let models_bytes = crate::audio::common::dir_size_bytes(&models_dir);
@@ -482,6 +494,9 @@ pub async fn get_local_stack_status() -> Result<serde_json::Value, String> {
         if parakeet_loaded {
             m += 600;
         }
+        if gigaam_loaded {
+            m += 400; // int8 conformer, roughly the size of its weights
+        }
         // Builtin LLM size unknown without probing sidecar; add if STT free path
         m
     };
@@ -495,6 +510,10 @@ pub async fn get_local_stack_status() -> Result<serde_json::Value, String> {
         "parakeet": {
             "loaded": parakeet_loaded,
             "model": parakeet_model,
+        },
+        "gigaam": {
+            "loaded": gigaam_loaded,
+            "model": gigaam_model,
         },
         "sttIdleUnloadSecs": crate::audio::common::STT_IDLE_UNLOAD_SECS,
         "llmIdleUnloadSecs": crate::summary::summary_engine::DEFAULT_IDLE_TIMEOUT_SECS,

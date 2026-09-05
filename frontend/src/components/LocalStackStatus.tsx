@@ -20,6 +20,7 @@ type StackStatus = TranscriptionAccelerationStatus & {
   recording: boolean;
   whisper: { loaded: boolean; model: string | null };
   parakeet: { loaded: boolean; model: string | null };
+  gigaam?: { loaded: boolean; model: string | null };
   sttIdleUnloadSecs: number;
   llmIdleUnloadSecs: number;
   sttLastUnloadSecs?: number;
@@ -67,6 +68,9 @@ export function LocalStackStatus() {
   const t = useTranslations('app');
   const [status, setStatus] = useState<StackStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  // The live engine is Parakeet or GigaAM, whichever the owner picked
+  const liveSttLoaded = !!(status?.parakeet.loaded || status?.gigaam?.loaded);
+  const liveSttModel = status?.gigaam?.loaded ? status.gigaam.model : status?.parakeet.model;
   const whisperBackend = getWhisperBackend(status);
   const whisperBackendLabel = whisperBackend
     ? formatWhisperBackend(whisperBackend)
@@ -131,12 +135,12 @@ export function LocalStackStatus() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Pill
-              ok={!!status?.parakeet.loaded}
-              label={status?.parakeet.loaded ? 'Loaded' : 'Unloaded'}
+              ok={liveSttLoaded}
+              label={liveSttLoaded ? 'Loaded' : 'Unloaded'}
             />
             <Pill ok={false} label="CPU" />
-            {status?.parakeet.model && (
-              <span className="text-xs text-[var(--af-text-2)]">{status.parakeet.model}</span>
+            {liveSttModel && (
+              <span className="text-xs text-[var(--af-text-2)]">{liveSttModel}</span>
             )}
           </div>
         </div>
