@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { useTranslations } from 'next-intl';
 
 /**
  * Per-source live audio level sample emitted by the Rust audio pipeline
@@ -64,6 +65,7 @@ export function LiveAudioVisualizer({
   fill = false,
   className = '',
 }: LiveAudioVisualizerProps) {
+  const t = useTranslations('recording');
   const [levels, setLevels] = useState<number[]>(() => new Array(bars).fill(0));
   const [limiterWarning, setLimiterWarning] = useState(false);
   const levelsRef = useRef<number[]>(new Array(bars).fill(0));
@@ -157,13 +159,13 @@ export function LiveAudioVisualizer({
     : source === 'mic'
       ? 'bg-blue-500'
       : 'bg-purple-500';
-  const warningText = 'System audio is hitting the limiter. Lower system gain or playback volume.';
+  const warningText = t('limiterWarning');
 
   return (
     <div
       className={`flex items-end gap-[2px] h-4 ${fill ? 'w-full' : ''} ${className}`}
       role="group"
-      aria-label={`${source === 'mic' ? 'Microphone' : 'System'} audio level${limiterWarning ? '. Too loud.' : ''}`}
+      aria-label={`${source === 'mic' ? t('audioLevelMic') : t('audioLevelSystem')}${limiterWarning ? t('tooLoudSuffix') : ''}`}
       title={limiterWarning ? warningText : undefined}
     >
       {levels.map((level, index) => (
