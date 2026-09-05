@@ -1,6 +1,7 @@
 'use client';
 
 import { Block } from '@/types';
+import { useTranslations } from 'next-intl';
 import { useRef, useState, useEffect } from 'react';
 
 interface BlockProps {
@@ -71,6 +72,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
   onNavigate,
   onCreateNewBlock,
 }) => {
+  const t = useTranslations('app');
   const [showCommands, setShowCommands] = useState(false);
   const [commandFilter, setCommandFilter] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
@@ -250,7 +252,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
             ${block.type === 'heading1' ? 'text-xl font-bold' : ''}
             ${block.type === 'heading2' ? 'text-lg font-semibold' : ''}
           `}
-          placeholder="Type '/' for commands..."
+          placeholder={t('blockPlaceholder')}
         />
 
         {showCommands && (

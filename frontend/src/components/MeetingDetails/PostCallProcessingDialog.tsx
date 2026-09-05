@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Loader2, Sparkles, Users } from 'lucide-react';
@@ -195,12 +196,13 @@ export function PostCallProcessingDialog({
   onRefetchTranscripts?: () => Promise<void>;
   onComplete: () => void;
 }) {
+  const t = useTranslations('app');
   const { selectedLanguage, transcriptModelConfig } = useConfig();
   const [stage, setStage] = useState<Stage>('idle');
   const [speakerCount, setSpeakerCount] = useState('2');
   const [autoDetectSpeakers, setAutoDetectSpeakers] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState('Preparing enhanced transcript...');
+  const [message, setMessage] = useState(() => t('postCallPreparing'));
   const [error, setError] = useState<string | null>(null);
   const [failedStage, setFailedStage] = useState<FailedStage | null>(null);
   const initializedMeetingRef = useRef<string | null>(null);
@@ -223,10 +225,10 @@ export function PostCallProcessingDialog({
   const completeWorkflow = () => {
     sessionStorage.setItem(storageKey, 'completed');
     setStage('idle');
-    toast.success('Post-call processing complete', {
+    toast.success(t('postCallComplete'), {
       description: skippedEnhancementRef.current
-        ? 'Speaker labels refreshed from the saved transcript.'
-        : 'Transcript enhanced and speaker labels refreshed.',
+        ? t('postCallSpeakersRefreshed')
+        : t('postCallEnhancedAndRefreshed'),
     });
     onComplete();
   };
@@ -236,7 +238,7 @@ export function PostCallProcessingDialog({
   ) => {
     activeStageRef.current = phase;
     setStage('refreshing');
-    setMessage('Refreshing the enhanced transcript...');
+    setMessage(t('postCallRefreshing'));
     await onRefetchTranscripts?.();
   };
 
@@ -245,8 +247,8 @@ export function PostCallProcessingDialog({
     setStage('diarizing');
     setProgress(100);
     setMessage(count === null
-      ? 'Auto-detecting speakers...'
-      : `Identifying ${count} speaker${count === 1 ? '' : 's'}...`);
+      ? t('postCallAutoDetecting')
+      : t('postCallIdentifyingSpeakers', { count }));
     await invoke('diarize_meeting', { meetingId, numSpeakers: count });
     await refreshTranscript('post-diarization-refresh');
     completeWorkflow();
@@ -254,7 +256,7 @@ export function PostCallProcessingDialog({
 
   const runWorkflow = async (count: number | null) => {
     if (!meetingFolderPath) {
-      throw new Error('The recording folder is unavailable for enhancement.');
+      throw new Error(t('postCallNoFolder'));
     }
 
     setError(null);
@@ -262,7 +264,7 @@ export function PostCallProcessingDialog({
     activeStageRef.current = 'enhancing';
     setStage('enhancing');
     setProgress(0);
-    setMessage('Preparing enhanced transcript...');
+    setMessage(t('postCallPreparing'));
     const postCallConfig = await invoke<PostCallTranscriptConfig>('api_get_post_call_transcript_config')
       .catch(() => ({ provider: 'live' as const, model: '' }));
     const useLiveDefault = postCallConfig.provider === 'live';
@@ -292,7 +294,7 @@ export function PostCallProcessingDialog({
     if (autoDetectSpeakers) return null;
     const count = Number(speakerCount);
     if (!Number.isInteger(count) || count < 1 || count > 20) {
-      setError('Enter the total number of speakers, from 1 to 20.');
+      setError(t('postCallSpeakerCountError'));
       return undefined;
     }
     return count;
@@ -319,7 +321,7 @@ export function PostCallProcessingDialog({
       setFailedStage(activeStageRef.current);
       setError(nextError);
       setStage('error');
-      toast.error('Post-call processing failed', { description: nextError });
+      toast.error(t('postCallFailed'), { description: nextError });
     }
   };
 
@@ -336,7 +338,7 @@ export function PostCallProcessingDialog({
       setFailedStage(activeStageRef.current);
       setError(nextError);
       setStage('error');
-      toast.error('Speaker identification failed', { description: nextError });
+      toast.error(t('postCallSpeakerFailed'), { description: nextError });
     }
   };
 
@@ -345,8 +347,8 @@ export function PostCallProcessingDialog({
       skippedEnhancementRef.current = true;
       await refreshTranscript('post-diarization-refresh');
       completeWorkflow();
-      toast.info('Using the live transcript', {
-        description: 'No enhanced audio pass was applied; the saved live text remains available.',
+      toast.info(t('postCallUsingLive'), {
+        description: t('postCallUsingLiveDescription'),
       });
     } catch (cause) {
       const nextError = cause instanceof Error ? cause.message : String(cause);
@@ -383,10 +385,10 @@ export function PostCallProcessingDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users size={18} className="text-blue-400" />
-              How many people spoke?
+              {t('postCallHowMany')}
             </DialogTitle>
             <DialogDescription id="post-call-processing-description">
-              Include yourself in the total. Entering the actual number gives more accurate speaker labels, or choose Auto-detect if you are not sure.
+              {t('postCallHowManyDescription')}
             </DialogDescription>
           </DialogHeader>
 
@@ -415,7 +417,7 @@ export function PostCallProcessingDialog({
                   setError(null);
                 }}
               >
-                Auto-detect
+                {t('postCallAutoDetect')}
               </Button>
             </div>
             <input
@@ -423,14 +425,14 @@ export function PostCallProcessingDialog({
               min={1}
               max={20}
               value={autoDetectSpeakers ? '' : speakerCount}
-              placeholder={autoDetectSpeakers ? 'Speakers will be detected automatically' : undefined}
+              placeholder={autoDetectSpeakers ? t('postCallSpeakersAutoPlaceholder') : undefined}
               onFocus={() => setAutoDetectSpeakers(false)}
               onChange={(event) => {
                 setSpeakerCount(event.target.value);
                 setAutoDetectSpeakers(false);
               }}
               className="w-full rounded-md border border-[var(--af-border)] bg-[var(--af-panel-2)] px-3 py-2 text-sm text-[var(--af-text)] outline-none focus:ring-2 focus:ring-blue-500"
-              aria-label="Total number of speakers"
+              aria-label={t('postCallSpeakerCountAria')}
             />
             {error && <p className="text-sm text-red-400">{error}</p>}
           </div>
@@ -438,11 +440,11 @@ export function PostCallProcessingDialog({
           <DialogFooter>
             {stage === 'error' && (
               <Button type="button" variant="outline" onClick={continueWithLiveTranscript}>
-                Use live transcript
+                {t('postCallUseLiveTranscript')}
               </Button>
             )}
             <Button type="button" onClick={start}>
-              {stage === 'error' ? 'Retry' : 'Enhance meeting'}
+              {stage === 'error' ? t('postCallRetry') : t('postCallEnhance')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -460,7 +462,7 @@ export function PostCallProcessingDialog({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-[var(--af-text)]">Improving transcript</p>
+                <p className="text-sm font-semibold text-[var(--af-text)]">{t('postCallImprovingTranscript')}</p>
                 <span className="shrink-0 text-xs tabular-nums text-[var(--af-text-3)]">
                   {visibleProgress}%
                 </span>
@@ -476,7 +478,7 @@ export function PostCallProcessingDialog({
                 />
               </div>
               <p className="mt-2 text-[11px] text-[var(--af-text-3)]">
-                You can keep reviewing the live transcript while this finishes.
+                {t('postCallKeepReviewing')}
               </p>
             </div>
           </div>
