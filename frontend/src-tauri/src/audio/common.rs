@@ -71,7 +71,7 @@ pub fn mark_stt_activity() {
     STT_LAST_ACTIVITY_SECS.store(now_secs(), Ordering::Relaxed);
 }
 
-/// Unload Whisper + Parakeet if neither is needed (not recording, idle long enough).
+/// Unload the local STT engines if none is needed (not recording, idle long enough).
 pub async fn unload_stt_if_idle() {
     let last = STT_LAST_ACTIVITY_SECS.load(Ordering::Relaxed);
     if last == 0 {
@@ -95,7 +95,7 @@ pub async fn unload_stt_if_idle() {
         return;
     }
 
-    info!("🧊 STT idle for {idle_for}s — unloading Whisper/Parakeet to free memory");
+    info!("🧊 STT idle for {idle_for}s — unloading local STT models to free memory");
     unload_both_stt_engines().await;
     STT_LAST_ACTIVITY_SECS.store(0, Ordering::Relaxed);
     STT_LAST_UNLOAD_SECS.store(now_secs(), Ordering::Relaxed);
@@ -128,6 +128,19 @@ async fn unload_both_stt_engines() {
             }
         }
     }
+    {
+        use crate::gigaam_engine::commands::GIGAAM_ENGINE;
+        let engine = {
+            let guard = GIGAAM_ENGINE.lock().unwrap_or_else(|e| e.into_inner());
+            guard.as_ref().cloned()
+        };
+        if let Some(e) = engine {
+            if e.is_model_loaded().await {
+                e.unload_model().await;
+                info!("Unloaded GigaAM model");
+            }
+        }
+    }
 }
 
 /// Before loading STT: free the builtin LLM so VRAM isn't shared with a big model.
@@ -137,7 +150,7 @@ pub async fn prepare_for_stt() {
     mark_llm_unloaded();
 }
 
-/// Before starting the LLM sidecar: unload Whisper/Parakeet (unless recording).
+/// Before starting the LLM sidecar: unload the local STT models (unless recording).
 pub async fn prepare_for_llm() {
     if crate::audio::recording_commands::is_recording().await {
         info!("🔄 Preparing for LLM — STT kept (recording in progress)");

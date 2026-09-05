@@ -445,6 +445,37 @@ mod tests {
         assert_eq!(status.progress, 0);
     }
 
+    /// Checks the real endpoint: seeds a directory from an existing copy of the
+    /// model, truncates one file and lets the downloader finish it with a range
+    /// request. Opt-in because it needs the model on disk and network access:
+    ///   GIGAAM_MODEL_DIR=<dir> cargo test --lib gigaam -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "needs GIGAAM_MODEL_DIR and network access"]
+    async fn a_partial_file_is_resumed_from_the_published_source() {
+        let source = std::path::PathBuf::from(
+            std::env::var("GIGAAM_MODEL_DIR").expect("GIGAAM_MODEL_DIR"),
+        );
+        let temp = tempfile::tempdir().expect("temp dir");
+        let engine =
+            GigaamEngine::new_with_models_dir(Some(temp.path().to_path_buf())).expect("engine");
+
+        for (name, _) in MODEL_FILES {
+            std::fs::copy(source.join(name), engine.model_dir().join(name)).expect("seed file");
+        }
+
+        // Cut the vocabulary short so only those few kilobytes are fetched again
+        let vocab = engine.model_dir().join(MODEL_FILES[3].0);
+        let content = std::fs::read(&vocab).expect("read vocab");
+        std::fs::write(&vocab, &content[..5000]).expect("truncate vocab");
+
+        assert!(engine.status().await.partial);
+        engine.download_model(None).await.expect("resume download");
+
+        let status = engine.status().await;
+        assert!(status.installed, "download did not complete: {:?}", status);
+        assert_eq!(std::fs::read(&vocab).expect("read vocab"), content);
+    }
+
     #[tokio::test]
     async fn a_truncated_file_is_reported_as_partial() {
         let temp = tempfile::tempdir().expect("temp dir");
