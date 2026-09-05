@@ -66,6 +66,10 @@ export function useRecordingStart(
     const provider = (transcriptModelConfig?.provider || 'parakeet').toLowerCase();
     const preferParakeet = provider === 'parakeet' || provider.includes('parakeet');
 
+    // The external speech service holds its own model - nothing to preload here.
+    // The backend checks that the service answers before the recording starts.
+    if (provider === 'externalstt') return true;
+
     try {
       if (preferParakeet) {
         await invoke('parakeet_init');

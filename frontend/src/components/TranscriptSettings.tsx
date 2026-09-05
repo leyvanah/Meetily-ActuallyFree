@@ -8,11 +8,12 @@ import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { ExternalSttSettings } from './ExternalSttSettings';
 import type { RawModelInfo } from '@/hooks/useTranscriptionModels';
 import { isVisibleParakeetModel } from '@/lib/parakeet';
 
 export interface TranscriptModelProps {
-    provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+    provider: 'localWhisper' | 'parakeet' | 'externalStt' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
     model: string;
     apiKey?: string | null;
 }
@@ -118,7 +119,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             });
     }, []);
 
-    const saveLiveConfig = async (provider: 'localWhisper' | 'parakeet', model: string): Promise<boolean> => {
+    const saveLiveConfig = async (provider: 'localWhisper' | 'parakeet' | 'externalStt', model: string): Promise<boolean> => {
         if (liveSaveInFlightRef.current) return false;
         liveSaveInFlightRef.current = true;
         setIsSavingLive(true);
@@ -236,7 +237,8 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             : undefined)
         || installedWhisperModels[0];
     const effectivePostCallProvider = postCallConfig.provider === 'live'
-        ? (uiProvider === 'localWhisper' ? 'whisper' : 'parakeet')
+        // "Same as live" can also point at the external service, which has no card here
+        ? (uiProvider === 'localWhisper' ? 'whisper' : uiProvider === 'parakeet' ? 'parakeet' : 'externalStt')
         : postCallConfig.provider;
     const effectivePostCallModel = postCallConfig.provider === 'live'
         ? transcriptModelConfig.model
@@ -374,6 +376,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </Button>
                     )}
                 </div>
+
+                <ExternalSttSettings
+                    isSelected={uiProvider === 'externalStt'}
+                    disabled={isSavingLive}
+                    onSelect={(modelLabel) => saveLiveConfig('externalStt', modelLabel)}
+                />
             </section>
 
             <section ref={postCallSectionRef} className="scroll-mt-6 space-y-4 rounded-xl border border-[var(--af-border)] bg-[var(--af-panel-2)] p-4 text-[var(--af-text)] sm:p-5">
