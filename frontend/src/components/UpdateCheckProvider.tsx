@@ -1,6 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
 import { UpdateInfo } from '@/services/updateService';
 import { UpdateDialog } from './UpdateDialog';
@@ -26,6 +27,7 @@ export function UpdateCheckProvider({
   children: React.ReactNode;
   onboardingCompleted?: boolean;
 }) {
+  const t = useTranslations('app');
   const platform = usePlatform();
   // macOS ships as a separate DMG release with no Tauri updater artifact or
   // latest.json entry. Calling the Windows updater path there is misleading.
@@ -57,24 +59,24 @@ export function UpdateCheckProvider({
 
         const reconfigurationUrl = status.setupDownloadUrl;
         if (status.reconfigurationRequired && reconfigurationUrl) {
-          toast.warning('NVIDIA CUDA is ready', {
+          toast.warning(t('cudaReadyTitle'), {
             id: 'cuda-reconfiguration-status',
-            description: `Rerun Meetily setup to replace the ${status.compiledBackend} build with the CUDA build.`,
+            description: t('cudaReadyDescription', { backend: status.compiledBackend }),
             duration: 30000,
             action: {
-              label: 'Download setup',
+              label: t('cudaDownloadSetup'),
               onClick: () => {
                 void invoke('open_external_url', { url: reconfigurationUrl });
               },
             },
           });
         } else if (status.driverUpdateRequired) {
-          toast.warning('NVIDIA driver update recommended', {
+          toast.warning(t('cudaDriverUpdateTitle'), {
             id: 'cuda-reconfiguration-status',
-            description: 'Install a current NVIDIA driver, then reopen Meetily to recheck CUDA support.',
+            description: t('cudaDriverUpdateDescription'),
             duration: 30000,
             action: {
-              label: 'Get driver',
+              label: t('cudaGetDriver'),
               onClick: () => {
                 void invoke('open_external_url', {
                   url: 'https://www.nvidia.com/Download/index.aspx',

@@ -814,8 +814,8 @@ export function useSummaryGeneration({
     setSummaryError(null);
 
     // Show toast notification
-    toast.info('Summary generation stopped', {
-      description: 'You can generate a new summary anytime',
+    toast.info(t('summaryGenerationStopped'), {
+      description: t('summaryGenerationStoppedDescription'),
       duration: 3000,
     });
   }, [meeting.id, stopSummaryPolling]);

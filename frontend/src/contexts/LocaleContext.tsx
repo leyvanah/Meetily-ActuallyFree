@@ -61,6 +61,15 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Read the active catalog outside the provider. `app/layout.tsx` renders
+ * LocaleProvider, so it cannot use `useTranslations` for its own toasts; the
+ * saved preference in localStorage is the same value the provider starts from.
+ */
+export function getLocaleMessages(): typeof enMessages {
+  return MESSAGES[getSavedAppLocale()];
+}
+
 export function useAppLocale() {
   const ctx = useContext(LocaleContext);
   if (!ctx) throw new Error('useAppLocale must be used within LocaleProvider');
