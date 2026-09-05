@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { User } from 'lucide-react';
@@ -10,6 +11,7 @@ import { User } from 'lucide-react';
  * the local mic as "You" and the UI shows e.g. "Tyler (You)".
  */
 export function YourNameStep() {
+  const t = useTranslations('onboarding');
   const { goNext, goPrevious } = useOnboarding();
   const [name, setName] = useState('');
 
@@ -30,8 +32,8 @@ export function YourNameStep() {
 
   return (
     <OnboardingContainer
-      title="What should we call you?"
-      description="Your name labels your voice in transcripts as “You”. You can change this later in Settings."
+      title={t('nameTitle')}
+      description={t('nameDescription')}
       step={4}
       totalSteps={5}
       showNavigation
@@ -52,20 +54,23 @@ export function YourNameStep() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') saveAndNext();
             }}
-            placeholder="Your name"
+            placeholder={t('namePlaceholder')}
             className="h-12 min-w-0 flex-1 rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] px-4 text-base text-[var(--af-text)] placeholder:text-[var(--af-text-3)] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             autoFocus
           />
         </div>
         <p className="text-center text-xs text-[var(--af-text-3)]">
-          Example: lines you speak show as <strong className="text-blue-400">{name.trim() || 'You'} (You)</strong>
+          {t('nameExamplePrefix')}
+          <strong className="text-blue-400">
+            {t('nameExampleValue', { name: name.trim() || t('nameYouFallback') })}
+          </strong>
         </p>
         <button
           type="button"
           onClick={saveAndNext}
           className="mt-6 h-11 w-full rounded-xl bg-[var(--af-accent)] text-sm font-semibold text-[var(--af-accent-contrast)] shadow-sm transition hover:brightness-110 active:scale-[0.99]"
         >
-          Continue
+          {t('continue')}
         </button>
       </div>
     </OnboardingContainer>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useOnboarding } from '@/contexts/OnboardingContext';
@@ -32,6 +33,7 @@ interface AudioLevelUpdate {
  * their first real meeting.
  */
 export function AudioTestStep() {
+  const t = useTranslations('onboarding');
   const { goPrevious, completeOnboarding } = useOnboarding();
   const platform = usePlatform();
   const isMacOS = platform === 'macos';
@@ -40,7 +42,7 @@ export function AudioTestStep() {
   const [micHeard, setMicHeard] = useState(false);
   const [sysHeard, setSysHeard] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState('Starting meters…');
+  const [status, setStatus] = useState(() => t('audioStartingMeters'));
   const [inputs, setInputs] = useState<AudioDevice[]>([]);
   const [outputs, setOutputs] = useState<AudioDevice[]>([]);
   const [micName, setMicName] = useState<string>('');
@@ -74,14 +76,14 @@ export function AudioTestStep() {
         setError(null);
         setMicRms(0);
         setSysRms(0);
-        setStatus('Opening devices…');
+        setStatus(t('audioOpeningDevices'));
 
         const deviceNames = (isMacOS ? [mic] : [mic, sys]).filter(
           (name) => name && name.trim().length > 0,
         );
         if (!mic && !sys) {
-          setError('No microphone or speakers found. Check your system sound settings.');
-          setStatus('No devices');
+          setError(t('audioNoDevicesFound'));
+          setStatus(t('audioNoDevices'));
           return;
         }
 
@@ -95,7 +97,7 @@ export function AudioTestStep() {
           if (!active.current || run !== meterRun.current) return;
 
           if (isMacOS && sys) {
-            setStatus('Testing native system audio… Play a video now.');
+            setStatus(t('audioTestingNative'));
             try {
               const detected = await invoke<boolean>('trigger_system_audio_permission_command');
               if (!active.current || run !== meterRun.current) return;
@@ -104,7 +106,7 @@ export function AudioTestStep() {
               setSysRms(detected ? 0.2 : 0);
               if (!detected) {
                 setError(
-                  'System audio was not detected. Play audio, grant Audio Capture permission if prompted, then click Retest audio.',
+                  t('audioSystemNotDetected'),
                 );
               }
             } catch (systemError) {
@@ -141,7 +143,7 @@ export function AudioTestStep() {
           if (!active.current || run !== meterRun.current) return;
           monitoring.current = false;
           const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
-          setError(msg || 'Could not start level meters');
+          setError(msg || t('audioMetersFailed'));
           setStatus('Failed');
         }
       });
@@ -161,7 +163,7 @@ export function AudioTestStep() {
   const loadDevicesAndStart = useCallback(async () => {
     const run = ++deviceLoad.current;
     setError(null);
-    setStatus('Finding devices…');
+    setStatus(t('audioFindingDevices'));
     try {
       const devices = await invoke<AudioDevice[]>('get_audio_devices');
       if (!active.current || run !== deviceLoad.current) return;
@@ -176,8 +178,8 @@ export function AudioTestStep() {
       setSysName(nextSys);
 
       if (!nextMic && !nextSys) {
-        setError('No audio devices detected. Plug in a microphone and check system privacy settings.');
-        setStatus('No devices');
+        setError(t('audioNoDevicesDetected'));
+        setStatus(t('audioNoDevices'));
         return;
       }
 
@@ -185,7 +187,7 @@ export function AudioTestStep() {
     } catch (e) {
       if (!active.current || run !== deviceLoad.current) return;
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
-      setError(msg || 'Failed to list audio devices');
+      setError(msg || t('audioListDevicesFailed'));
       setStatus('Failed');
     }
   }, [startMeters]);
@@ -285,12 +287,8 @@ export function AudioTestStep() {
 
   return (
     <OnboardingContainer
-      title="Test your audio"
-      description={
-        isMacOS
-          ? 'Pick your mic, play audio through the current default output, then use Retest audio to verify native Audio Capture.'
-          : 'Pick your mic and speakers, then speak / play something. Meters should move.'
-      }
+      title={t('audioTestTitle')}
+      description={isMacOS ? t('audioTestDescriptionMac') : t('audioTestDescription')}
       step={5}
       totalSteps={5}
       showNavigation
@@ -306,10 +304,10 @@ export function AudioTestStep() {
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4 space-y-3">
           <div className="flex items-center justify-between text-sm font-medium text-[var(--af-text)]">
             <span className="inline-flex items-center gap-2">
-              <Mic size={16} className="text-blue-400" /> Microphone
+              <Mic size={16} className="text-blue-400" /> {t('audioMicrophone')}
             </span>
             <span className={micHeard ? 'text-emerald-400 text-xs' : 'text-[var(--af-text-3)] text-xs'}>
-              {micHeard ? 'Heard you ✓' : 'Speak now…'}
+              {micHeard ? t('audioHeardYou') : t('audioSpeakNow')}
             </span>
           </div>
           {inputs.length > 0 ? (
@@ -325,7 +323,7 @@ export function AudioTestStep() {
               ))}
             </select>
           ) : (
-            <p className="text-xs text-[var(--af-text-3)]">No microphones found</p>
+            <p className="text-xs text-[var(--af-text-3)]">{t('audioNoMicrophones')}</p>
           )}
           {bar(micRms, micHeard)}
         </div>
@@ -333,15 +331,15 @@ export function AudioTestStep() {
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4 space-y-3">
           <div className="flex items-center justify-between text-sm font-medium text-[var(--af-text)]">
             <span className="inline-flex items-center gap-2">
-              <Volume2 size={16} className="text-purple-400" /> System audio
+              <Volume2 size={16} className="text-purple-400" /> {t('audioSystemAudio')}
             </span>
             <span className={sysHeard ? 'text-emerald-400 text-xs' : 'text-[var(--af-text-3)] text-xs'}>
-              {sysHeard ? 'Detected ✓' : 'Play a video…'}
+              {sysHeard ? t('audioDetected') : t('audioPlayVideo')}
             </span>
           </div>
           {isMacOS && outputs.length > 0 ? (
             <p className="text-xs text-[var(--af-text-3)]">
-              Current default output (change it in System Settings)
+              {t('audioMacDefaultOutput')}
             </p>
           ) : outputs.length > 0 ? (
             <select
@@ -356,7 +354,7 @@ export function AudioTestStep() {
               ))}
             </select>
           ) : (
-            <p className="text-xs text-[var(--af-text-3)]">No playback devices found</p>
+            <p className="text-xs text-[var(--af-text-3)]">{t('audioNoPlaybackDevices')}</p>
           )}
           {bar(sysRms, sysHeard)}
         </div>
@@ -368,13 +366,13 @@ export function AudioTestStep() {
             onClick={() => void loadDevicesAndStart()}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--af-border)] px-2.5 py-1.5 text-xs text-[var(--af-text-2)] hover:bg-[var(--af-panel-2)]"
           >
-            <RefreshCw size={12} /> {isMacOS ? 'Retest audio' : 'Refresh devices'}
+            <RefreshCw size={12} /> {isMacOS ? t('audioRetest') : t('audioRefreshDevices')}
           </button>
         </div>
 
         {error && <p className="text-center text-xs text-amber-400 break-words">{error}</p>}
         <p className="text-center text-xs text-[var(--af-text-3)]">
-          You can finish even if a meter stays quiet — fix devices later in Settings → Recording.
+          {t('audioFinishHint')}
         </p>
 
         <button
@@ -382,7 +380,7 @@ export function AudioTestStep() {
           onClick={() => void finish()}
           className="w-full h-11 rounded-xl bg-[var(--af-accent)] text-sm font-semibold text-[var(--af-accent-contrast)] shadow-sm transition hover:brightness-110 active:scale-[0.99]"
         >
-          {micHeard || sysHeard ? 'Continue' : 'Skip for now'}
+          {micHeard || sysHeard ? t('continue') : t('audioSkipForNow')}
         </button>
       </div>
     </OnboardingContainer>

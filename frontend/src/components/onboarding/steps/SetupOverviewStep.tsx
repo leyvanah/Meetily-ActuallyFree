@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Cpu, Info, RefreshCw, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/tooltip';
 
 export function SetupOverviewStep() {
+  const t = useTranslations('onboarding');
   const { goNext } = useOnboarding();
   const [isMac, setIsMac] = useState(false);
   const [whisperBackend, setWhisperBackend] = useState<WhisperBackend | null | undefined>();
@@ -60,12 +62,12 @@ export function SetupOverviewStep() {
     {
       number: 1,
       type: 'transcription',
-      title: 'Download Transcription Engine',
+      title: t('setupStepTranscription'),
     },
     {
       number: 2,
       type: 'summarization',
-      title: 'Download Summarization Engine',
+      title: t('setupStepSummarization'),
     },
   ];
 
@@ -93,27 +95,27 @@ export function SetupOverviewStep() {
   };
 
   const accelerationLabel = cudaStatus?.reconfigurationRequired
-    ? 'NVIDIA CUDA available — setup required'
+    ? t('setupCudaAvailable')
     : whisperBackend === undefined
-    ? 'Detecting...'
+    ? t('setupAccelerationDetecting')
     : whisperBackend === null
-      ? 'Could not determine'
-      : `${formatWhisperBackend(whisperBackend)} selected`;
+      ? t('setupAccelerationUnknown')
+      : t('setupBackendSelected', { backend: formatWhisperBackend(whisperBackend) });
   const accelerationDescription = whisperBackend === undefined
-    ? 'Checking the acceleration selected for this installation.'
+    ? t('setupAccelerationChecking')
     : whisperBackend === null
-      ? 'You can review the acceleration backend later in Local Stack settings.'
+      ? t('setupAccelerationReviewLater')
       : whisperBackend === 'CPU'
-        ? 'Whisper post-call enhancement will use CPU processing.'
-        : 'Whisper post-call enhancement will use this automatically selected backend.';
+        ? t('setupAccelerationCpu')
+        : t('setupAccelerationAuto');
   const showCudaNotice = cudaStatus?.driverUpdateRequired || cudaStatus?.reconfigurationRequired;
   const cudaProbeFailed = cudaStatus?.driverState === 'query-failed';
   const cudaBuildInstalled = cudaStatus?.compiledBackend.toLowerCase() === 'cuda';
 
   return (
     <OnboardingContainer
-      title="Setup Overview"
-      description="Meetily requires that you download the Transcription & Summarization AI models for the software to work."
+      title={t('setupTitle')}
+      description={t('setupDescription')}
       step={2}
       totalSteps={isMac ? 4 : 3}
     >
@@ -129,7 +131,7 @@ export function SetupOverviewStep() {
                 >
                   <div className="flex-1 ml-1">
                     <h3 className="font-medium text-gray-900 flex items-center gap-2">
-                        Step {step.number} :  {step.title}
+                        {t('setupStepPrefix', { number: step.number })}  {step.title}
 
                         {step.type === 'summarization' && (
                             <TooltipProvider>
@@ -140,8 +142,7 @@ export function SetupOverviewStep() {
                                 </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs text-sm">
-                                You can also select external AI providers like OpenAI, Claude, or
-                                Ollama for summary generation in settings.
+                                {t('setupSummaryProvidersTooltip')}
                                 </TooltipContent>
                             </Tooltip>
                             </TooltipProvider>
@@ -160,12 +161,12 @@ export function SetupOverviewStep() {
               {whisperBackend === 'CPU' ? <Cpu className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-900">Transcription acceleration</p>
+              <p className="text-sm font-medium text-gray-900">{t('setupAcceleration')}</p>
               <p className="mt-1 text-sm font-semibold text-blue-700">
                 {accelerationLabel}
               </p>
               <p className="mt-1 text-xs leading-5 text-gray-600">
-                {accelerationDescription} Live Parakeet transcription uses the CPU.
+                {accelerationDescription} {t('setupParakeetCpuNote')}
               </p>
             </div>
           </div>
@@ -181,19 +182,19 @@ export function SetupOverviewStep() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">
                   {cudaStatus?.reconfigurationRequired
-                    ? 'CUDA is ready now'
+                    ? t('setupCudaReady')
                     : cudaProbeFailed
-                      ? 'CUDA support could not be verified'
-                      : 'Your NVIDIA GPU needs a current driver'}
+                      ? t('setupCudaUnverified')
+                      : t('setupCudaDriverNeeded')}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-amber-900">
                   {cudaStatus?.reconfigurationRequired
-                    ? `This installation is still using ${formatWhisperBackend(whisperBackend ?? 'CPU')}. Rerun the latest Meetily setup and it will select NVIDIA CUDA automatically.`
+                    ? t('setupCudaRerunSetup', { backend: formatWhisperBackend(whisperBackend ?? 'CPU') })
                     : cudaProbeFailed
-                      ? `Meetily could not read your NVIDIA driver details. Update or reinstall the driver, then recheck here.${cudaBuildInstalled ? '' : ' The current backend remains selected until setup is rerun.'}`
+                      ? t('setupCudaProbeFailed', { suffix: cudaBuildInstalled ? '' : t('setupCudaProbeFailedSuffix') })
                       : cudaBuildInstalled
-                        ? 'This CUDA installation cannot use acceleration until NVIDIA driver 580.00 or newer is installed.'
-                        : 'Install NVIDIA driver 580.00 or newer to enable CUDA acceleration. Meetily will keep using its current fallback safely until you rerun setup.'}
+                        ? t('setupCudaBuildNoDriver')
+                        : t('setupCudaNoDriver')}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -203,7 +204,7 @@ export function SetupOverviewStep() {
                     onClick={cudaStatus?.reconfigurationRequired ? openLatestSetup : openNvidiaDrivers}
                     className="border-amber-400 bg-white text-amber-950 hover:bg-amber-100"
                   >
-                    {cudaStatus?.reconfigurationRequired ? 'Download CUDA setup' : 'Get NVIDIA driver'}
+                    {cudaStatus?.reconfigurationRequired ? t('setupDownloadCuda') : t('setupGetNvidiaDriver')}
                   </Button>
                   <Button
                     type="button"
@@ -214,7 +215,7 @@ export function SetupOverviewStep() {
                     className="text-amber-950 hover:bg-amber-100"
                   >
                     <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${checkingAcceleration ? 'animate-spin' : ''}`} />
-                    Recheck
+                    {t('setupRecheck')}
                   </Button>
                 </div>
               </div>
@@ -228,7 +229,7 @@ export function SetupOverviewStep() {
             onClick={handleContinue}
             className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
           >
-            Let's Go
+            {t('setupLetsGo')}
           </Button>
           <div className="text-center">
             <button
@@ -236,7 +237,7 @@ export function SetupOverviewStep() {
               onClick={openIssues}
               className="text-xs text-gray-600 hover:underline"
             >
-              View project on GitHub
+              {t('setupViewOnGithub')}
             </button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProgressIndicator } from './shared/ProgressIndicator';
@@ -20,6 +21,7 @@ export function OnboardingContainer({
   canGoNext = true,
   canGoPrevious = true,
 }: OnboardingContainerProps) {
+  const t = useTranslations('onboarding');
   const { goToStep, goPrevious, goNext } = useOnboarding();
 
   const handlePrevious = () => {
@@ -70,7 +72,7 @@ export function OnboardingContainer({
                 <button
                   onClick={handleNext}
                   disabled={!canGoNext}
-                  aria-label={step === totalSteps ? 'Finish' : 'Next'}
+                  aria-label={step === totalSteps ? t('finish') : t('next')}
                   className={cn(
                     'pointer-events-auto w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center transition-all duration-200',
                     canGoNext
