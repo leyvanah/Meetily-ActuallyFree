@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { applyAppTheme, getSavedAppTheme } from '@/lib/app-theme'
+import { LocaleProvider, getLocaleMessages } from '@/contexts/LocaleContext'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RecordingStateProvider } from '@/contexts/RecordingStateContext'
 import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
@@ -140,8 +141,9 @@ export default function RootLayout({
       console.log('[Layout] Received request-recording-toggle from tray');
 
       if (showOnboarding) {
-        toast.error("Please complete setup first", {
-          description: "You need to finish onboarding before you can start recording."
+        const m = getLocaleMessages().app;
+        toast.error(m.completeSetupFirst, {
+          description: m.completeSetupFirstOnboarding
         });
       } else {
         // If in main app, forward to useRecordingStart via window event
@@ -166,8 +168,9 @@ export default function RootLayout({
 
         const startRecording = () => {
           if (showOnboarding) {
-            toast.error('Please complete setup first', {
-              description: 'Finish onboarding before you can start recording.',
+            const m = getLocaleMessages().app;
+            toast.error(m.completeSetupFirst, {
+              description: m.completeSetupFirstShort,
             });
             return;
           }
@@ -197,8 +200,9 @@ export default function RootLayout({
     // OS notification button → same start path as sidebar / in-app toast.
     const unlistenStart = listen('start-recording-from-notification', () => {
       if (showOnboarding) {
-        toast.error('Please complete setup first', {
-          description: 'Finish onboarding before you can start recording.',
+        const m = getLocaleMessages().app;
+        toast.error(m.completeSetupFirst, {
+          description: m.completeSetupFirstShort,
         });
         return;
       }
@@ -217,8 +221,9 @@ export default function RootLayout({
     const betaFeatures = loadBetaFeatures();
 
     if (!betaFeatures.importAndRetranscribe) {
-      toast.error('Beta feature disabled', {
-        description: 'Enable "Import Audio & Retranscribe" in Settings > Beta to use this feature.'
+      const m = getLocaleMessages().app;
+      toast.error(m.betaFeatureDisabled, {
+        description: m.betaFeatureDisabledDescription
       });
       return;
     }
@@ -234,8 +239,9 @@ export default function RootLayout({
       setImportFilePath(audioFile);
       setShowImportDialog(true);
     } else if (paths.length > 0) {
-      toast.error('Please drop an audio file', {
-        description: `Supported formats: ${getAudioFormatsDisplayList()}`
+      const m = getLocaleMessages().app;
+      toast.error(m.dropAudioFile, {
+        description: m.supportedFormats.replace('{formats}', getAudioFormatsDisplayList())
       });
     }
   }, []);
@@ -321,15 +327,18 @@ export default function RootLayout({
   // Checked via location rather than usePathname so no hook order changes.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/minibar')) {
     return (
-      <html lang="en" className="dark minibar-window">
-        <body className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>
-          {children}
-        </body>
-      </html>
+      <LocaleProvider>
+        <html lang="en" className="dark minibar-window">
+          <body className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>
+            {children}
+          </body>
+        </html>
+      </LocaleProvider>
     )
   }
 
   return (
+    <LocaleProvider>
     <html lang="en" className="dark">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
         {!startupResolved ? (
@@ -337,10 +346,10 @@ export default function RootLayout({
         ) : startupError ? (
           <div className="flex h-screen items-center justify-center bg-[var(--af-bg)] px-6">
             <div className="max-w-md rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-6 text-center shadow-xl">
-              <h1 className="text-lg font-semibold text-[var(--af-text)]">Startup check failed</h1>
+              <h1 className="text-lg font-semibold text-[var(--af-text)]">{getLocaleMessages().app.startupCheckFailed}</h1>
               <p className="mt-2 text-sm text-[var(--af-text-2)]">{startupError}</p>
               <Button className="mt-5" onClick={() => setStartupAttempt((value) => value + 1)}>
-                Retry
+                {getLocaleMessages().app.retry}
               </Button>
             </div>
           </div>
@@ -400,5 +409,6 @@ export default function RootLayout({
         <Toaster position="bottom-center" theme="dark" richColors closeButton />
       </body>
     </html>
+    </LocaleProvider>
   )
 }

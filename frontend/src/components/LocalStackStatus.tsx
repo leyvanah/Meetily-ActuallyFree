@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { Cpu, HardDrive, RefreshCw, Trash2, Zap, Shield, Network } from 'lucide-react';
@@ -63,6 +64,7 @@ function formatAgo(unixSecs?: number): string {
 }
 
 export function LocalStackStatus() {
+  const t = useTranslations('app');
   const [status, setStatus] = useState<StackStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const whisperBackend = getWhisperBackend(status);
@@ -76,7 +78,7 @@ export function LocalStackStatus() {
       setStatus(s);
     } catch (e) {
       console.error('get_local_stack_status failed', e);
-      toast.error('Could not read local stack status');
+      toast.error(t('localStackReadFailed'));
     }
   }, []);
 
@@ -90,10 +92,10 @@ export function LocalStackStatus() {
     setBusy(true);
     try {
       await invoke('force_unload_stt_models');
-      toast.success('STT models unloaded');
+      toast.success(t('sttUnloaded'));
       await refresh();
     } catch (e) {
-      toast.error(typeof e === 'string' ? e : 'Unload failed (recording in progress?)');
+      toast.error(typeof e === 'string' ? e : t('sttUnloadFailed'));
     } finally {
       setBusy(false);
     }
@@ -103,10 +105,10 @@ export function LocalStackStatus() {
     setBusy(true);
     try {
       await invoke('force_unload_all_models');
-      toast.success('Freed STT + local LLM memory');
+      toast.success(t('memoryFreed'));
       await refresh();
     } catch (e) {
-      toast.error(typeof e === 'string' ? e : 'Free-all failed (recording in progress?)');
+      toast.error(typeof e === 'string' ? e : t('freeAllFailed'));
     } finally {
       setBusy(false);
     }
@@ -115,7 +117,7 @@ export function LocalStackStatus() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold text-[var(--af-text)]">Local stack</h3>
+        <h3 className="text-base font-semibold text-[var(--af-text)]">{t('localStackTitle')}</h3>
         <p className="mt-1 text-sm text-[var(--af-text-3)]">
           What is loaded on this PC. STT and the local LLM never stay loaded together,
           so their model memory is not shared.
@@ -125,7 +127,7 @@ export function LocalStackStatus() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--af-text)]">
-            <Zap size={16} className="text-amber-400" /> Live STT (Parakeet preferred)
+            <Zap size={16} className="text-amber-400" /> {t('localStackLiveStt')}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Pill
@@ -141,7 +143,7 @@ export function LocalStackStatus() {
 
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--af-text)]">
-            <Cpu size={16} className="text-cyan-400" /> Post-call STT (Whisper)
+            <Cpu size={16} className="text-cyan-400" /> {t('localStackPostCallStt')}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Pill
@@ -157,7 +159,7 @@ export function LocalStackStatus() {
 
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--af-text)]">
-            <HardDrive size={16} className="text-blue-400" /> Disk
+            <HardDrive size={16} className="text-blue-400" /> {t('localStackDisk')}
           </div>
           <p className="text-xs text-[var(--af-text-2)]">
             Models: <strong>{formatBytes(status?.modelsDirBytes)}</strong>
@@ -173,7 +175,7 @@ export function LocalStackStatus() {
 
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--af-text)]">
-            <Cpu size={16} className="text-purple-400" /> Transcription acceleration
+            <Cpu size={16} className="text-purple-400" /> {t('localStackAcceleration')}
           </div>
           <div className="space-y-2 text-xs text-[var(--af-text-2)]">
             <div className="flex items-center justify-between gap-3">
@@ -196,7 +198,7 @@ export function LocalStackStatus() {
 
         <div className="rounded-xl border border-[var(--af-border)] bg-[var(--af-panel)] p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--af-text)]">
-            <RefreshCw size={16} className="text-[var(--af-text-3)]" /> Idle unload
+            <RefreshCw size={16} className="text-[var(--af-text-3)]" /> {t('localStackIdleUnload')}
           </div>
           <p className="text-xs text-[var(--af-text-2)]">
             STT after {status?.sttIdleUnloadSecs ?? '—'}s · LLM after{' '}

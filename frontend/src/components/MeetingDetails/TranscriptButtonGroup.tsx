@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Copy, Download, FolderOpen, RefreshCw, Users, Loader2 } from 'lucide-react';
@@ -32,6 +33,8 @@ export function TranscriptButtonGroup({
   meetingFolderPath,
   onRefetchTranscripts,
 }: TranscriptButtonGroupProps) {
+  const t = useTranslations('meetingDetails');
+  const tc = useTranslations('common');
   const { betaFeatures } = useConfig();
   const [showRetranscribeDialog, setShowRetranscribeDialog] = useState(false);
 
@@ -53,8 +56,8 @@ export function TranscriptButtonGroup({
     // labels. Immediately re-run the improved offline pass (dual tracks when
     // available; enrolled voiceprint fallback for older mixed recordings).
     if (meetingId && diarizeAvailable) {
-      const toastId = toast.loading('Refreshing speaker labels…', {
-        description: 'Running improved diarization on the enhanced transcript.',
+      const toastId = toast.loading(t('refreshingSpeakersTitle'), {
+        description: t('refreshingSpeakersDescription'),
       });
       try {
         const knownCount = parseInt(expectedSpeakers, 10);
@@ -62,25 +65,25 @@ export function TranscriptButtonGroup({
           meetingId,
           numSpeakers: Number.isFinite(knownCount) && knownCount > 0 ? knownCount : null,
         });
-        toast.success('Speaker labels refreshed', { id: toastId });
+        toast.success(t('speakersRefreshed'), { id: toastId });
       } catch (error) {
         console.warn('Post-retranscription diarization skipped:', error);
-        toast.warning('Transcript enhanced; speaker refresh unavailable', { id: toastId });
+        toast.warning(t('speakerRefreshUnavailable'), { id: toastId });
       }
     }
 
     if (onRefetchTranscripts) {
       await onRefetchTranscripts();
     }
-  }, [meetingId, diarizeAvailable, expectedSpeakers, onRefetchTranscripts]);
+  }, [meetingId, diarizeAvailable, expectedSpeakers, onRefetchTranscripts, t]);
 
   const handleIdentifySpeakers = useCallback(async (expected?: number) => {
     if (!meetingId || isDiarizing) return;
     Analytics.trackButtonClick('identify_speakers', 'meeting_details');
     setShowSpeakerDialog(false);
     setIsDiarizing(true);
-    const toastId = toast.loading('Identifying speakers…', {
-      description: 'Analyzing the recording on-device. This can take a minute.',
+    const toastId = toast.loading(t('identifyingSpeakersTitle'), {
+      description: t('identifyingSpeakersDescription'),
     });
     try {
       const res = await invoke<{ num_speakers: number; labeled: number }>('diarize_meeting', {
@@ -89,20 +92,20 @@ export function TranscriptButtonGroup({
       });
       toast.success(
         res.num_speakers > 0
-          ? `Found ${res.num_speakers} speaker${res.num_speakers === 1 ? '' : 's'}`
-          : 'No speakers detected',
-        { id: toastId, description: `${res.labeled} transcript segments labeled.` }
+          ? t('speakersFound', { count: res.num_speakers })
+          : t('noSpeakersDetected'),
+        { id: toastId, description: t('segmentsLabeled', { count: res.labeled }) }
       );
       if (onRefetchTranscripts) {
         await onRefetchTranscripts();
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error('Speaker identification failed', { id: toastId, description: msg });
+      toast.error(t('speakerIdentificationFailed'), { id: toastId, description: msg });
     } finally {
       setIsDiarizing(false);
     }
-  }, [meetingId, isDiarizing, onRefetchTranscripts]);
+  }, [meetingId, isDiarizing, onRefetchTranscripts, t]);
 
   return (
     <div className="flex w-max min-w-full shrink-0 items-center justify-end">
@@ -116,10 +119,10 @@ export function TranscriptButtonGroup({
             onCopyTranscript();
           }}
           disabled={transcriptCount === 0}
-          title={transcriptCount === 0 ? 'No transcript available' : 'Copy Transcript'}
+          title={transcriptCount === 0 ? t('noTranscriptAvailable') : t('copyTranscript')}
         >
           <Copy size={16} />
-          <span className="transcript-action-label">Copy</span>
+          <span className="transcript-action-label">{t('copy')}</span>
         </Button>
 
         {onOpenExport && (
@@ -132,10 +135,10 @@ export function TranscriptButtonGroup({
               onOpenExport();
             }}
             disabled={transcriptCount === 0}
-            title={transcriptCount === 0 ? 'No meeting content available' : 'Export meeting'}
+            title={transcriptCount === 0 ? t('noMeetingContent') : t('exportMeeting')}
           >
             <Download size={16} />
-            <span className="transcript-action-label">Export</span>
+            <span className="transcript-action-label">{t('export')}</span>
           </Button>
         )}
 
@@ -147,10 +150,10 @@ export function TranscriptButtonGroup({
             Analytics.trackButtonClick('open_recording_folder', 'meeting_details');
             onOpenMeetingFolder();
           }}
-          title="Open Recording Folder"
+          title={t('openRecordingFolder')}
         >
           <FolderOpen size={16} />
-          <span className="transcript-action-label">Recording</span>
+          <span className="transcript-action-label">{t('recordingFolder')}</span>
         </Button>
 
         {diarizeAvailable && meetingId && (
@@ -163,18 +166,14 @@ export function TranscriptButtonGroup({
               setShowSpeakerDialog(true);
             }}
             disabled={isDiarizing || transcriptCount === 0}
-            title={
-              transcriptCount === 0
-                ? 'No transcript available'
-                : 'Identify who spoke when, using the local diarization models'
-            }
+            title={transcriptCount === 0 ? t('noTranscriptAvailable') : t('identifySpeakersTooltip')}
           >
             {isDiarizing ? (
               <Loader2 className="animate-spin" size={16} />
             ) : (
               <Users size={16} />
             )}
-            <span className="transcript-action-label">{isDiarizing ? 'Working…' : 'Speakers'}</span>
+            <span className="transcript-action-label">{isDiarizing ? t('speakersWorking') : t('speakers')}</span>
           </Button>
         )}
 
@@ -187,10 +186,10 @@ export function TranscriptButtonGroup({
               Analytics.trackButtonClick('enhance_transcript', 'meeting_details');
               setShowRetranscribeDialog(true);
             }}
-            title="Retranscribe to enhance your recorded audio"
+            title={t('enhanceTooltip')}
           >
             <RefreshCw size={16} />
-            <span className="transcript-action-label">Enhance</span>
+            <span className="transcript-action-label">{t('enhance')}</span>
           </Button>
         )}
       </ButtonGroup>
@@ -200,13 +199,15 @@ export function TranscriptButtonGroup({
         <DialogContent aria-describedby={undefined} className="sm:max-w-md">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users size={18} className="text-blue-500" />
-            Identify speakers
+            {t('identifySpeakersDialogTitle')}
           </DialogTitle>
           <div className="mt-2 space-y-3">
             <p className="text-sm text-gray-500">
-              How many distinct voices were in this meeting, <span className="text-[var(--af-text,#374151)] font-medium">including you</span>?
-              For example, you plus one other person is <span className="text-[var(--af-text,#374151)] font-medium">2</span>.
-              Entering the count is much more accurate than auto-detect — leave blank to guess.
+              {t.rich('identifySpeakersDialogHint', {
+                b: (chunks) => (
+                  <span className="text-[var(--af-text,#374151)] font-medium">{chunks}</span>
+                ),
+              })}
             </p>
             <input
               type="number"
@@ -222,7 +223,7 @@ export function TranscriptButtonGroup({
                   handleIdentifySpeakers(Number.isFinite(n) && n > 0 ? n : undefined);
                 }
               }}
-              placeholder="Auto-detect"
+              placeholder={t('autoDetect')}
               className="w-full rounded-md border border-[var(--af-border,#d1d5db)] bg-[var(--af-panel-2,#fff)] px-3 py-2 text-sm text-[var(--af-text,#111827)] outline-none focus:ring-2 focus:ring-blue-500"
             />
             <div className="flex flex-wrap gap-1.5">
@@ -244,7 +245,7 @@ export function TranscriptButtonGroup({
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowSpeakerDialog(false)}>
-              Cancel
+              {tc('cancel')}
             </Button>
             <Button
               size="sm"
@@ -255,7 +256,7 @@ export function TranscriptButtonGroup({
               }}
             >
               <Users size={16} className="mr-1.5" />
-              {expectedSpeakers ? `Find ${expectedSpeakers} speakers` : 'Auto-detect'}
+              {expectedSpeakers ? t('findSpeakersCount', { count: expectedSpeakers }) : t('autoDetect')}
             </Button>
           </div>
         </DialogContent>

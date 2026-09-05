@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import { Switch } from "./ui/switch"
 import { invoke } from "@tauri-apps/api/core"
 import { Radar } from "lucide-react"
@@ -19,6 +20,7 @@ interface MeetingDetectionSettings {
  * Fully on-device. Persisted install-locally via Rust.
  */
 export function MeetingDetectionSettings() {
+  const t = useTranslations('settings');
   const [md, setMd] = useState<MeetingDetectionSettings | null>(null);
   const [ignoredInput, setIgnoredInput] = useState('');
 
@@ -41,7 +43,7 @@ export function MeetingDetectionSettings() {
   };
 
   if (!md) {
-    return <div className="max-w-2xl mx-auto p-6 text-gray-500">Loading…</div>;
+    return <div className="max-w-2xl mx-auto p-6 text-gray-500">{t('detectionLoading')}</div>;
   }
 
   return (
@@ -51,11 +53,10 @@ export function MeetingDetectionSettings() {
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
               <Radar className="w-5 h-5 text-blue-500" />
-              Meeting Detection
+              {t('detectionTitle')}
             </h3>
             <p className="text-sm text-gray-600">
-              Watch for meeting apps (Zoom, Teams, Slack, Webex, Discord…) and prompt you to start
-              recording when one starts. Runs entirely on-device — no network, no telemetry.
+              {t('detectionDescription')}
             </p>
           </div>
           <Switch checked={md.enabled} onCheckedChange={(v) => saveMd({ ...md, enabled: v })} />
@@ -64,7 +65,7 @@ export function MeetingDetectionSettings() {
         {md.enabled && (
           <div className="mt-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
-              <label className="text-sm text-gray-700">Check every</label>
+              <label className="text-sm text-gray-700">{t('detectionInterval')}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -75,18 +76,18 @@ export function MeetingDetectionSettings() {
                   onBlur={() => saveMd({ ...md, interval_secs: Math.min(3600, Math.max(3, md.interval_secs || 15)) })}
                   className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
                 />
-                <span className="text-sm text-gray-500">seconds</span>
+                <span className="text-sm text-gray-500">{t('detectionSeconds')}</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between gap-4">
-              <label className="text-sm text-gray-700">Also send a system notification</label>
+              <label className="text-sm text-gray-700">{t('detectionNotify')}</label>
               <Switch checked={md.notify} onCheckedChange={(v) => saveMd({ ...md, notify: v })} />
             </div>
 
             <div>
               <label className="text-sm text-gray-700 block mb-1">
-                Ignore these apps (comma-separated)
+                {t('detectionIgnoreLabel')}
               </label>
               <input
                 type="text"
@@ -101,11 +102,11 @@ export function MeetingDetectionSettings() {
                       .filter(Boolean),
                   })
                 }
-                placeholder="e.g. obs64, teamviewer"
+                placeholder={t('detectionIgnorePlaceholder')}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Watched apps: {md.meeting_apps.join(', ')}
+                {t('detectionWatchedApps', { apps: md.meeting_apps.join(', ') })}
               </p>
             </div>
           </div>

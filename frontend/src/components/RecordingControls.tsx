@@ -33,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { usePermissionCheck } from '@/hooks/usePermissionCheck';
+import { useTranslations } from 'next-intl';
 
 interface RecordingControlsProps {
   isRecording: boolean;
@@ -64,6 +65,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   selectedDevices,
   meetingName,
 }) => {
+  const t = useTranslations('recording');
   // Use global recording state context for pause state (syncs with tray operations)
   const recordingState = useRecordingState();
   const isPaused = recordingState.isPaused;
@@ -76,7 +78,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
   // For the idle bar: the selected mic name, and a live-ish system-audio check.
   const { hasSystemAudio, checkPermissions } = usePermissionCheck();
-  const micName = selectedDevices?.micDevice?.trim() || 'Default microphone';
+  const micName = selectedDevices?.micDevice?.trim() || t('defaultMicrophone');
   useEffect(() => {
     if (isRecording) return;
     const id = setInterval(() => { checkPermissions(); }, 5000);
@@ -145,7 +147,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         console.log('Tauri is initialized and ready, is_recording result:', result);
       } catch (error) {
         console.error('Tauri initialization error:', error);
-        alert('Failed to initialize recording. Please check the console for details.');
+        alert(t('initFailedAlert'));
       }
     };
     checkTauri();
@@ -188,23 +190,23 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       // Check for device-related errors
       if (errorMsg.includes('microphone') || errorMsg.includes('mic') || errorMsg.includes('input')) {
         setDeviceError({
-          title: 'Microphone Not Available',
-          message: 'Unable to access your microphone. Please check that:\n• Your microphone is connected\n• The app has microphone permissions\n• No other app is using the microphone'
+          title: t('micNotAvailableTitle'),
+          message: t('micNotAvailableMessage')
         });
       } else if (errorMsg.includes('system audio') || errorMsg.includes('speaker') || errorMsg.includes('output')) {
         setDeviceError({
-          title: 'System Audio Not Available',
-          message: 'Unable to capture system audio. On macOS, grant Meetily Audio Capture permission in Privacy & Security, play audio, and try again. On other platforms, verify the selected playback device.'
+          title: t('systemAudioNotAvailableTitle'),
+          message: t('systemAudioNotAvailableMessage')
         });
       } else if (errorMsg.includes('permission')) {
         setDeviceError({
-          title: 'Permission Required',
-          message: 'Recording permissions are required. Grant microphone access and, on macOS, Audio Capture access in Privacy & Security. Restart the app after changing permissions.'
+          title: t('permissionRequiredTitle'),
+          message: t('permissionRequiredMessage')
         });
       } else {
         setDeviceError({
-          title: 'Recording Failed',
-          message: 'Unable to start recording. Please check your audio device settings and try again.'
+          title: t('recordingFailedTitle'),
+          message: t('recordingFailedMessage')
         });
       }
     } finally {
@@ -296,7 +298,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       console.log('Recording paused successfully');
     } catch (error) {
       console.error('Failed to pause recording:', error);
-      alert('Failed to pause recording. Please check the console for details.');
+      alert(t('pauseFailedAlert'));
     } finally {
       setIsPausing(false);
     }
@@ -314,7 +316,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       console.log('Recording resumed successfully');
     } catch (error) {
       console.error('Failed to resume recording:', error);
-      alert('Failed to resume recording. Please check the console for details.');
+      alert(t('resumeFailedAlert'));
     } finally {
       setIsResuming(false);
     }
@@ -474,7 +476,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           {isProcessing && !isParentProcessing ? (
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              <span className="text-sm text-gray-300">Processing recording...</span>
+              <span className="text-sm text-gray-300">{t('processingRecording')}</span>
             </div>
           ) : (
             <>
@@ -540,13 +542,13 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
                               {(isStarting || isValidatingModel) && (
                                 <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--af-panel-2,#1f2937)] px-3 py-1 text-xs font-medium text-[var(--af-text,#e5e7eb)] shadow-lg">
-                                  {startupMessage || 'Starting…'}
+                                  {startupMessage || t('starting')}
                                 </div>
                               )}
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Start recording</p>
+                            <p>{t('startRecordingTooltip')}</p>
                           </TooltipContent>
                         </Tooltip>
 
@@ -559,27 +561,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           className="text-left leading-tight"
                         >
                           <div className="font-semibold tracking-tight text-white">
-                            {isStarting || isValidatingModel ? 'Starting…' : 'Start Recording'}
+                            {isStarting || isValidatingModel ? t('starting') : t('startRecording')}
                           </div>
-                          <div className="text-[11px] text-red-400">Ready</div>
+                          <div className="text-[11px] text-red-400">{t('ready')}</div>
                         </button>
                       </div>
 
                       <div className="h-10 w-px bg-white/10" />
 
                       <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-[12px]">
-                        <div className="flex min-w-0 items-center gap-2" title={`Microphone: ${micName}`}>
+                        <div className="flex min-w-0 items-center gap-2" title={t('microphoneTitle', { micName })}>
                           <Mic size={13} className="shrink-0 text-gray-400" />
                           <span className="truncate text-gray-300">{micName}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Volume2 size={13} className="shrink-0 text-gray-400" />
-                          <span className="text-gray-400">System audio</span>
+                          <span className="text-gray-400">{t('systemAudio')}</span>
                           <span
                             className={`ml-0.5 h-2 w-2 rounded-full ${hasSystemAudio ? 'bg-emerald-500' : 'bg-red-500'}`}
                           />
                           <span className={hasSystemAudio ? 'text-emerald-400' : 'text-red-400'}>
-                            {hasSystemAudio ? 'Detected' : 'Not detected'}
+                            {hasSystemAudio ? t('detected') : t('notDetected')}
                           </span>
                         </div>
                       </div>
@@ -596,7 +598,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                         <div className="text-left leading-tight">
                           <div className="font-semibold tabular-nums tracking-tight">{formatElapsed(elapsedSeconds)}</div>
                           <div className={`text-[11px] ${isPaused ? 'text-orange-400' : 'text-red-400'}`}>
-                            {isStopping ? 'Stopping…' : isPaused ? 'Paused' : 'Recording'}
+                            {isStopping ? t('stopping') : isPaused ? t('paused') : t('recordingLabel')}
                           </div>
                         </div>
                       </div>
@@ -608,15 +610,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                         <div className="flex items-center gap-2">
                           <span className={`w-12 shrink-0 text-[11px] ${isMicrophoneMuted ? 'text-orange-400' : 'text-gray-400'}`}>
-                            Mic
+                            {t('mic')}
                           </span>
                           <LiveAudioVisualizer active={isRecording && !isPaused && !isMicrophoneMuted} source="mic" fill bars={28} className="flex-1" />
                           <button
                             type="button"
                             onClick={handleMicrophoneMute}
                             disabled={isStopping || isChangingMicrophoneMute || isChangingSystemAudioMute}
-                            title={isMicrophoneMuted ? 'Unmute microphone' : 'Mute microphone'}
-                            aria-label={isMicrophoneMuted ? 'Unmute microphone' : 'Mute microphone'}
+                            title={isMicrophoneMuted ? t('unmuteMicrophone') : t('muteMicrophone')}
+                            aria-label={isMicrophoneMuted ? t('unmuteMicrophone') : t('muteMicrophone')}
                             aria-pressed={isMicrophoneMuted}
                             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${
                               isMicrophoneMuted
@@ -629,15 +631,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`w-12 shrink-0 text-[11px] ${isSystemAudioMuted ? 'text-orange-400' : 'text-gray-400'}`}>
-                            System
+                            {t('system')}
                           </span>
                           <LiveAudioVisualizer active={isRecording && !isPaused && !isSystemAudioMuted} source="system" fill bars={28} className="flex-1" />
                           <button
                             type="button"
                             onClick={handleSystemAudioMute}
                             disabled={isStopping || isChangingMicrophoneMute || isChangingSystemAudioMute}
-                            title={isSystemAudioMuted ? 'Unmute system audio' : 'Mute system audio'}
-                            aria-label={isSystemAudioMuted ? 'Unmute system audio' : 'Mute system audio'}
+                            title={isSystemAudioMuted ? t('unmuteSystemAudio') : t('muteSystemAudio')}
+                            aria-label={isSystemAudioMuted ? t('unmuteSystemAudio') : t('muteSystemAudio')}
                             aria-pressed={isSystemAudioMuted}
                             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${
                               isSystemAudioMuted
@@ -662,11 +664,11 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                             }
                           }}
                           disabled={isPausing || isResuming || isStopping || isChangingMicrophoneMute || isChangingSystemAudioMute}
-                          title={isPaused ? 'Resume recording' : 'Pause recording'}
+                          title={isPaused ? t('resumeRecordingTooltip') : t('pauseRecordingTooltip')}
                           className="flex h-12 w-14 flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xs text-gray-300 transition-colors hover:bg-white/10 disabled:opacity-40"
                         >
                           {isPaused ? <Play size={15} /> : <Pause size={15} />}
-                          <span className="mt-0.5 text-[10px]">{isPaused ? 'Resume' : 'Pause'}</span>
+                          <span className="mt-0.5 text-[10px]">{isPaused ? t('resume') : t('pause')}</span>
                         </button>
 
                         <button
@@ -675,18 +677,18 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                             handleStopRecording();
                           }}
                           disabled={isStopping || isPausing || isResuming || isChangingMicrophoneMute || isChangingSystemAudioMute}
-                          title="Stop recording"
+                          title={t('stopRecordingTooltip')}
                           className="flex h-12 w-14 flex-col items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/15 text-xs text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-40"
                         >
                           <Square size={13} fill="currentColor" />
-                          <span className="mt-0.5 text-[10px]">Stop</span>
+                          <span className="mt-0.5 text-[10px]">{t('stop')}</span>
                         </button>
 
                         <div className="relative">
                           {showCompactTip && (
                             <div
                               role="dialog"
-                              aria-label="Shrink to floating bar"
+                              aria-label={t('shrinkToFloatingBarAria')}
                               className="absolute bottom-[calc(100%+12px)] right-0 z-50 w-[260px] rounded-xl border border-white/10 bg-[var(--af-panel,#0f1218)] px-3.5 py-3 text-left shadow-2xl shadow-black/50"
                             >
                               {/* Caret pointing at the minimize button */}
@@ -698,15 +700,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                                 type="button"
                                 onClick={() => setShowCompactTip(false)}
                                 className="absolute right-2 top-2 rounded p-0.5 text-[var(--af-text-3)] hover:text-[var(--af-text)]"
-                                aria-label="Dismiss"
+                                aria-label={t('dismiss')}
                               >
                                 <X size={14} />
                               </button>
                               <div className="pr-5 text-sm font-semibold text-[var(--af-text)]">
-                                You’re recording
+                                {t('youAreRecording')}
                               </div>
                               <p className="mt-1 text-xs leading-relaxed text-[var(--af-text-2)]">
-                                Tuck Meetily into a compact floating bar so it stays out of your way — expand it again anytime.
+                                {t('shrinkTipDescription')}
                               </p>
                               <button
                                 type="button"
@@ -716,7 +718,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                                 }}
                                 className="mt-3 w-full rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition-colors hover:bg-gray-100"
                               >
-                                Shrink to bar
+                                {t('shrinkToBar')}
                               </button>
                             </div>
                           )}
@@ -726,7 +728,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                               collapseToBar();
                             }}
                             disabled={isStopping}
-                            title="Shrink to floating bar"
+                            title={t('shrinkToFloatingBarAria')}
                             className={`flex h-12 w-12 items-center justify-center rounded-2xl border text-gray-300 transition-colors disabled:opacity-40 ${
                               showCompactTip
                                 ? 'border-[var(--af-accent)]/60 bg-[var(--af-accent)]/15 ring-2 ring-[var(--af-accent)]/30'
@@ -749,7 +751,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         {/* Show validation status only */}
         {isValidatingModel && (
           <div className="text-xs text-gray-600 text-center mt-2">
-            Validating speech recognition...
+            {t('validatingSpeechRecognition')}
           </div>
         )}
 
@@ -760,7 +762,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
             <button
               onClick={() => setDeviceError(null)}
               className="absolute right-3 top-3 text-red-600 hover:text-red-800 transition-colors"
-              aria-label="Close alert"
+              aria-label={t('closeAlert')}
             >
               <X className="h-4 w-4" />
             </button>

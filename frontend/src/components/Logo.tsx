@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslations } from "next-intl";
 import Image from "next/image";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { VisuallyHidden } from "./ui/visually-hidden";
@@ -9,6 +10,8 @@ interface LogoProps {
 }
 
 const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, ref) => {
+  const t = useTranslations('app');
+
   return (
     <Dialog aria-describedby={undefined}>
       {isCollapsed ? (
@@ -26,7 +29,7 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, re
       )}
       <DialogContent>
         <VisuallyHidden>
-          <DialogTitle>About Meetily</DialogTitle>
+          <DialogTitle>{t('aboutMeetily')}</DialogTitle>
         </VisuallyHidden>
         <About />
       </DialogContent>

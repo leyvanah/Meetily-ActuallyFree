@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { ModelStatus } from '../lib/whisper';
 import { Button } from './ui/button';
 
@@ -9,6 +10,7 @@ interface ModelDownloadProgressProps {
 }
 
 export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDownloadProgressProps) {
+  const t = useTranslations('app');
   if (typeof status !== 'object' || !('Downloading' in status)) {
     return null;
   }
@@ -37,7 +39,7 @@ export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDown
         <div className="flex justify-between text-xs text-blue-700 mt-1">
           <span>{Math.round(progress)}% complete</span>
           {!isCompleted && (
-            <span className="animate-pulse">Downloading...</span>
+            <span className="animate-pulse">{t('downloadingEllipsis')}</span>
           )}
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
   applyPinnedSummaryLanguageToMeeting,
   detectAndCacheSummaryLanguage,
 } from '@/lib/summary-language-preferences';
+import { useTranslations } from 'next-intl';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -42,6 +43,7 @@ export function useRecordingStop(
   setIsRecording: (value: boolean) => void,
   setIsRecordingDisabled: (value: boolean) => void
 ): UseRecordingStopReturn {
+  const t = useTranslations('recording');
   // USE global state instead
   const recordingState = useRecordingState();
   const {
@@ -122,8 +124,8 @@ export function useRecordingStop(
       } catch {
         /* ignore cleanup errors */
       }
-      toast.message('Recording cancelled', {
-        description: `That take was under ${MIN_MEETING_SECS} seconds, so nothing was saved.`,
+      toast.message(t('recordingCancelledTitle'), {
+        description: t('recordingCancelledDescription', { seconds: MIN_MEETING_SECS }),
         duration: 5000,
       });
       Analytics.trackButtonClick('recording_discarded_too_short', 'home_page');
@@ -276,8 +278,8 @@ export function useRecordingStop(
             shouldDetectSummaryLanguage = !(await applyPinnedSummaryLanguageToMeeting(meetingId));
           } catch (error) {
             console.warn('Failed to apply pinned summary language preference for new meeting:', error);
-            toast.warning('Could not apply default summary language', {
-              description: 'The meeting was saved, but the default summary language was not applied.',
+            toast.warning(t('summaryLanguageApplyFailedTitle'), {
+              description: t('summaryLanguageApplyFailedDescription'),
             });
           }
 
@@ -289,8 +291,8 @@ export function useRecordingStop(
               );
             } catch (error) {
               console.warn('Failed to detect summary language for new meeting:', error);
-              toast.warning('Could not detect summary language', {
-                description: 'The meeting was saved, but Auto could not detect the summary language.',
+              toast.warning(t('summaryLanguageDetectFailedTitle'), {
+                description: t('summaryLanguageDetectFailedDescription'),
               });
             }
           }
@@ -397,8 +399,8 @@ export function useRecordingStop(
         } catch (saveError) {
           console.error('Failed to save meeting to database:', saveError);
           setStatus(RecordingStatus.ERROR, saveError instanceof Error ? saveError.message : 'Unknown error');
-          toast.error('Failed to save meeting', {
-            description: saveError instanceof Error ? saveError.message : 'Unknown error'
+          toast.error(t('saveMeetingFailedTitle'), {
+            description: saveError instanceof Error ? saveError.message : t('unknownErrorShort')
           });
           throw saveError;
         }

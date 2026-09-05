@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Mic, Sparkles, Check, Loader2, Download } from 'lucide-react';
@@ -23,6 +24,7 @@ interface DownloadState {
 }
 
 export function DownloadProgressStep() {
+  const t = useTranslations('onboarding');
   const {
     goNext,
     selectedSummaryModel,
@@ -92,7 +94,7 @@ export function DownloadProgressStep() {
         error: message,
       }));
 
-      toast.error('Download retry failed', {
+      toast.error(t('dlRetryFailed'), {
         description: message,
       });
     } finally {
@@ -129,7 +131,7 @@ export function DownloadProgressStep() {
       // Call download command directly (no retry command exists for built-in AI)
       const modelName = selectedSummaryModel;
       if (!modelName) {
-        throw new Error('Summary model recommendation is not ready yet');
+        throw new Error(t('dlSummaryRecommendationNotReady'));
       }
       await invoke('builtin_ai_download_model', { modelName });
     } catch (error) {
@@ -137,11 +139,11 @@ export function DownloadProgressStep() {
       setSummaryState((prev) => ({
         ...prev,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Retry failed',
+        error: error instanceof Error ? error.message : t('dlRetryFailedShort'),
       }));
 
-      toast.error('Summary model download retry failed', {
-        description: 'Please check your connection and try again.',
+      toast.error(t('dlSummaryRetryFailed'), {
+        description: t('dlCheckConnection'),
       });
     } finally {
       // Allow retry again after 2 seconds
@@ -351,8 +353,8 @@ export function DownloadProgressStep() {
           progress: 100,
         }));
       } else if (!actuallyAvailable && parakeetState.status === 'error') {
-        toast.error('Transcription engine required', {
-          description: 'Please retry the download before continuing.',
+        toast.error(t('dlEngineRequired'), {
+          description: t('dlRetryBeforeContinuing'),
         });
         return;
       }
@@ -366,8 +368,8 @@ export function DownloadProgressStep() {
 
     // Show toast if downloads still in progress
     if (!downloadsComplete) {
-      toast.info('Downloads will continue in the background', {
-        description: 'You can start using the app. Recording will be available once speech recognition is ready.',
+      toast.info(t('dlBackgroundContinue'), {
+        description: t('dlBackgroundContinueDescription'),
         duration: 5000,
       });
     }
@@ -393,7 +395,7 @@ export function DownloadProgressStep() {
             {icon}
           </div>
               <div>
-                <h3 className="font-medium text-gray-900">Step {step}: {title}</h3>
+                <h3 className="font-medium text-gray-900">{t('dlStepPrefix', { step, title })}</h3>
                 <p className="mt-0.5 text-xs font-medium text-blue-400">{modelName}</p>
                 <p className="text-sm text-gray-500">{modelSize}</p>
           </div>
@@ -401,7 +403,7 @@ export function DownloadProgressStep() {
         <div>
           {state.status === 'waiting' && (
             <span className="text-sm text-gray-500">
-              {step === 2 ? 'Waiting for Step 1' : 'Waiting...'}
+              {step === 2 ? t('dlWaitingForStep1') : t('dlWaiting')}
             </span>
           )}
           {state.status === 'downloading' && (
@@ -413,7 +415,7 @@ export function DownloadProgressStep() {
             </div>
           )}
           {state.status === 'error' && (
-            <span className="text-sm text-red-500">Failed</span>
+            <span className="text-sm text-red-500">{t('dlFailed')}</span>
           )}
         </div>
       </div>
@@ -447,18 +449,18 @@ export function DownloadProgressStep() {
 
       {state.status === 'error' && state.error && (
         <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-600 font-medium">Download Error</p>
+          <p className="text-sm text-red-600 font-medium">{t('dlDownloadError')}</p>
           <p className="text-xs text-red-500 mt-1">{state.error}</p>
-          {(title === 'Transcription Engine' || title === 'Summary Engine') && (
+          {(step === 1 || step === 2) && (
             <button
-              onClick={title === 'Transcription Engine' ? handleRetryDownload : handleRetrySummaryDownload}
+              onClick={step === 1 ? handleRetryDownload : handleRetrySummaryDownload}
               className="mt-3 w-full h-9 px-4 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Try Again
+              {t('dlTryAgain')}
             </button>
           )}
         </div>
@@ -468,8 +470,8 @@ export function DownloadProgressStep() {
 
   return (
     <OnboardingContainer
-      title="Getting things ready"
-      description="You can start using Meetily after downloading the Transcription Engine."
+      title={t('dlTitle')}
+      description={t('dlDescription')}
       step={3}
       totalSteps={isMac ? 4 : 3}
     >
@@ -478,7 +480,7 @@ export function DownloadProgressStep() {
         <div className="w-full max-w-lg space-y-4">
           {renderDownloadCard(
             1,
-            'Transcription Engine',
+            t('dlTranscriptionEngine'),
             PARAKEET_MODEL,
             <Mic className="w-5 h-5 text-gray-600" />,
             parakeetState,
@@ -487,8 +489,8 @@ export function DownloadProgressStep() {
 
           {renderDownloadCard(
             2,
-            'Summary Engine',
-            selectedSummaryModel || recommendedSummaryModel || 'Selecting recommended model...',
+            t('dlSummaryEngine'),
+            selectedSummaryModel || recommendedSummaryModel || t('dlSelectingModel'),
             <Sparkles className="w-5 h-5 text-gray-600" />,
             summaryState,
             getSummaryModelSizeLabel(selectedSummaryModel || recommendedSummaryModel),
@@ -509,9 +511,9 @@ export function DownloadProgressStep() {
               <div className="flex items-start gap-3">
                 <Download className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium">You can continue while this finishes</p>
+                  <p className="font-medium">{t('dlContinueWhileFinishes')}</p>
                   <p className="text-gray-700 mt-1">
-                    Download will continue in the background.
+                    {t('dlContinuesInBackground')}
                   </p>
                 </div>
               </div>
@@ -529,7 +531,7 @@ export function DownloadProgressStep() {
             {(isCompleting || !parakeetDownloaded) ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
-              'Continue'
+              t('continue')
             )}
           </Button>
         </div>

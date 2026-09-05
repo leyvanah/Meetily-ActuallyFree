@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { listen } from '@tauri-apps/api/event';
 import { useRecordingStop } from '@/hooks/useRecordingStop';
 import { toast } from 'sonner';
@@ -19,6 +20,8 @@ import { toast } from 'sonner';
  * regardless of which page the user is currently on.
  */
 export function RecordingPostProcessingProvider({ children }: { children: React.ReactNode }) {
+  const t = useTranslations('app');
+
   // No-op functions since the global RecordingStateContext already handles state updates
   // These are only needed for the hook's local component state management
   const setIsRecording = () => { };
@@ -53,7 +56,7 @@ export function RecordingPostProcessingProvider({ children }: { children: React.
 
           const { call_api, folder_path, meeting_name, audio_save_error } = event.payload;
           if (audio_save_error) {
-            toast.error('Some or all meeting audio could not be saved. The transcript will still be kept.', {
+            toast.error(t('audioSaveFailed'), {
               description: audio_save_error,
               duration: 10000,
             });

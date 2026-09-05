@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { Mic, MicOff, Monitor, VolumeX, Pause, Play, Square, Maximize2 } from 'lucide-react';
 import { LiveAudioVisualizer } from '@/components/LiveAudioVisualizer';
@@ -24,6 +25,7 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 export default function MiniBarPage() {
+  const t = useTranslations('app');
   const [elapsed, setElapsed] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -240,23 +242,23 @@ export default function MiniBarPage() {
           className="flex h-10 w-14 flex-col items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-gray-300 transition-colors hover:bg-white/10 disabled:opacity-40"
         >
           {isPaused ? <Play size={15} /> : <Pause size={15} />}
-          <span className="mt-0.5 text-[10px]">{isPaused ? 'Resume' : 'Pause'}</span>
+          <span className="mt-0.5 text-[10px]">{isPaused ? t('minibarResume') : t('minibarPause')}</span>
         </button>
 
         <button
           onClick={stop}
           disabled={isStopping || isChangingMicMute || isChangingSystemMute}
-          title="Stop recording"
+          title={t('minibarStopTitle')}
           className="flex h-10 w-14 flex-col items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-xs text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-40"
         >
           <Square size={13} fill="currentColor" />
-          <span className="mt-0.5 text-[10px]">Stop</span>
+          <span className="mt-0.5 text-[10px]">{t('minibarStop')}</span>
         </button>
 
         <button
           onClick={expand}
           disabled={isStopping || isChangingMicMute || isChangingSystemMute}
-          title="Back to the full window"
+          title={t('minibarExpandTitle')}
           className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-colors hover:bg-white/10 disabled:opacity-40"
         >
           <Maximize2 size={14} />

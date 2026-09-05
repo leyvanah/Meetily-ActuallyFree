@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { BookOpen, Check, CheckCircle2, ChevronDown, Clock3, Languages, Loader2, Radio, Zap } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ const DEFAULT_POST_CALL_CONFIG: PostCallTranscriptConfig = {
 };
 
 export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelConfig, onModelSelect }: TranscriptSettingsProps) {
+    const t = useTranslations('settings');
     const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
     const [whisperManagerOpen, setWhisperManagerOpen] = useState(false);
     const [installedModels, setInstalledModels] = useState<InstalledModel[]>([]);
@@ -97,7 +99,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             .then((config) => setPostCallConfig(config || DEFAULT_POST_CALL_CONFIG))
             .catch((error) => {
                 console.error('Failed to load post-call transcription config:', error);
-                setPostCallError('Could not load the post-call model preference.');
+                setPostCallError(t('postCallLoadFailed'));
             })
             .finally(() => setIsLoadingPostCall(false));
     }, [refreshInstalledModels]);
@@ -112,7 +114,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             })
             .catch((error) => {
                 console.error('Failed to load Whisper vocabulary:', error);
-                setVocabularyError('Could not load the saved vocabulary.');
+                setVocabularyError(t('vocabularyLoadFailed'));
             });
     }, []);
 
@@ -137,7 +139,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             onModelSelect?.();
             return true;
         } catch (error) {
-            toast.error('Could not save the live transcription model', {
+            toast.error(t('liveModelSaveFailed'), {
                 description: typeof error === 'string' ? error : String(error),
             });
             return false;
@@ -253,9 +255,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                 <div className="flex items-start gap-3">
                     <Radio className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
                     <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold">Live transcription</h3>
+                        <h3 className="font-semibold">{t('liveTranscriptionTitle')}</h3>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Choose the model used while recording. Parakeet is recommended for most live meetings; Whisper remains available when its extra language and vocabulary controls matter more than speed.
+                            {t('liveTranscriptionDescription')}
                         </p>
                     </div>
                 </div>
@@ -286,24 +288,24 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h4 className="font-semibold">Parakeet</h4>
                                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
-                                        Recommended for live
+                                        {t('badgeRecommendedLive')}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-sm text-[var(--af-text-2)]">
-                                    Best for live meetings: lower latency, lighter resource use, and strong real-time accuracy. Parakeet does not support custom vocabulary hints.
+                                    {t('parakeetLiveDescription')}
                                 </p>
                             </div>
                         </div>
                         {uiProvider === 'parakeet' ? (
                             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Selected for live
+                                <CheckCircle2 className="h-3.5 w-3.5" /> {t('selectedForLive')}
                             </span>
                         ) : installedParakeetModel ? (
                             <span className="rounded-full border border-[var(--af-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--af-text-2)]">
-                                Click to select
+                                {t('clickToSelect')}
                             </span>
                         ) : (
-                            <span className="text-xs text-[var(--af-text-3)]">Download below</span>
+                            <span className="text-xs text-[var(--af-text-3)]">{t('downloadBelow')}</span>
                         )}
                     </div>
                     <div className={isSavingLive ? 'pointer-events-none opacity-70' : ''} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
@@ -341,34 +343,34 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h4 className="font-semibold">Whisper</h4>
                                     <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-400">
-                                        Better for post-call
+                                        {t('badgeBetterPostCall')}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-sm text-[var(--af-text-2)]">
-                                    Best as a post-call second pass. Whisper is slower and heavier during live meetings, but supports vocabulary hints, manual language selection, and broad multilingual transcription.
+                                    {t('whisperLiveDescription')}
                                 </p>
                             </div>
                         </div>
                         {uiProvider === 'localWhisper' ? (
                             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Selected for live
+                                <CheckCircle2 className="h-3.5 w-3.5" /> {t('selectedForLive')}
                             </span>
                         ) : liveWhisperModel ? (
                             <span className="rounded-full border border-[var(--af-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--af-text-2)]">
-                                Click to select
+                                {t('clickToSelect')}
                             </span>
                         ) : null}
                     </div>
                     {liveWhisperModel ? (
                         <p className="text-xs text-[var(--af-text-3)]">
-                            Uses Whisper: {liveWhisperModel.name}. Change the installed model under Manage Whisper models below.
+                            {t('usesWhisperModel', { model: liveWhisperModel.name })}
                         </p>
                     ) : (
                         <Button type="button" variant="outline" className="w-full" onClick={(event) => {
                             event.stopPropagation();
                             openWhisperManager();
                         }}>
-                            Install Whisper for post-call or live use
+                            {t('installWhisperForUse')}
                         </Button>
                     )}
                 </div>
@@ -378,9 +380,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                 <div className="flex items-start gap-3">
                     <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-violet-500" />
                     <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold">Post-call retranscription</h3>
+                        <h3 className="font-semibold">{t('postCallTitle')}</h3>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Choose the default for automatic enhancement after recording. You can still override it for each meeting.
+                            {t('postCallDescription')}
                         </p>
                     </div>
                 </div>
@@ -411,37 +413,37 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h4 className="font-semibold">Whisper</h4>
                                     <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-400">
-                                        Recommended for post-call
+                                        {t('badgeRecommendedPostCall')}
                                     </span>
                                     <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-400">
-                                        Vocabulary hints
+                                        {t('badgeVocabularyHints')}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-sm text-[var(--af-text-2)]">
-                                    Best for post-call quality. Whisper is slower and uses more resources, but can improve difficult names, jargon, and multilingual audio. It uses your global vocabulary hints below to guide names, acronyms, and technical terms.
+                                    {t('whisperPostCallDescription')}
                                 </p>
                             </div>
                         </div>
                         {effectivePostCallProvider === 'whisper' ? (
                             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Selected for post-call
+                                <CheckCircle2 className="h-3.5 w-3.5" /> {t('selectedForPostCall')}
                             </span>
                         ) : postCallWhisperModel ? (
                             <span className="rounded-full border border-[var(--af-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--af-text-2)]">
-                                Click to select
+                                {t('clickToSelect')}
                             </span>
                         ) : null}
                     </div>
                     {postCallWhisperModel ? (
                         <p className="text-xs text-[var(--af-text-3)]">
-                            Uses Whisper: {postCallWhisperModel.name}. Change the specific model under Manage Whisper models below.
+                            {t('usesWhisperModel', { model: postCallWhisperModel.name })}
                         </p>
                     ) : (
                         <Button type="button" variant="outline" className="w-full" onClick={(event) => {
                             event.stopPropagation();
                             openWhisperManager();
                         }}>
-                            Install a Whisper model
+                            {t('installWhisperModel')}
                         </Button>
                     )}
                 </div>
@@ -472,24 +474,24 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h4 className="font-semibold">Parakeet</h4>
                                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
-                                        Fast and accurate
+                                        {t('badgeFastAccurate')}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-sm text-[var(--af-text-2)]">
-                                    Finishes post-call enhancement sooner and uses fewer resources while maintaining strong accuracy. It does not use global vocabulary hints.
+                                    {t('parakeetPostCallDescription')}
                                 </p>
                             </div>
                         </div>
                         {effectivePostCallProvider === 'parakeet' ? (
                             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Selected for post-call
+                                <CheckCircle2 className="h-3.5 w-3.5" /> {t('selectedForPostCall')}
                             </span>
                         ) : installedParakeetModel ? (
                             <span className="rounded-full border border-[var(--af-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--af-text-2)]">
-                                Click to select
+                                {t('clickToSelect')}
                             </span>
                         ) : (
-                            <span className="text-xs text-[var(--af-text-3)]">Install Parakeet above</span>
+                            <span className="text-xs text-[var(--af-text-3)]">{t('installParakeetAbove')}</span>
                         )}
                     </div>
                 </div>
@@ -498,9 +500,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     {postCallError ? (
                         <span className="text-red-500">{postCallError}</span>
                     ) : postCallSaved ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3.5 w-3.5" /> Post-call default saved</span>
+                        <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3.5 w-3.5" /> {t('postCallDefaultSaved')}</span>
                     ) : postCallConfig.provider === 'live' ? (
-                        <span className="text-[var(--af-text-3)]">This currently follows your live model. Choosing either card makes post-call selection independent.</span>
+                        <span className="text-[var(--af-text-3)]">{t('postCallFollowsLive')}</span>
                     ) : null}
                 </div>
 
@@ -510,7 +512,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     className="group rounded-lg border border-[var(--af-border-strong)] bg-[var(--af-panel-2)]"
                 >
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
-                        <span>Install or manage Whisper models</span>
+                        <span>{t('manageWhisperModels')}</span>
                         <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
                     </summary>
                     <div className={`border-t border-[var(--af-border)] bg-[var(--af-panel-2)] px-4 py-4 ${isSavingPostCall ? 'pointer-events-none opacity-70' : ''}`}>
@@ -528,15 +530,15 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     <BookOpen className={`mt-0.5 h-4 w-4 shrink-0 ${whisperIsActive ? 'text-blue-500' : 'text-muted-foreground'}`} />
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Label htmlFor="whisper-vocabulary" className="text-sm font-medium">Global vocabulary hints</Label>
+                            <Label htmlFor="whisper-vocabulary" className="text-sm font-medium">{t('globalVocabularyHints')}</Label>
                             {!whisperIsActive && (
-                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">Whisper only</span>
+                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">{t('whisperOnly')}</span>
                             )}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                             {whisperIsActive
-                                ? 'Help Whisper recognize names, companies, products, acronyms, and technical terms in live or post-call transcription. Whisper uses up to 224 prompt tokens.'
-                                : 'These hints become available when Whisper is selected for live or post-call transcription.'}
+                                ? t('vocabularyActiveDescription')
+                                : t('vocabularyInactiveDescription')}
                         </p>
                     </div>
                 </div>
@@ -560,14 +562,14 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         {vocabularyError ? (
                             <span className="text-red-500">{vocabularyError}</span>
                         ) : vocabularySaved ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3.5 w-3.5" /> Saved</span>
+                            <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3.5 w-3.5" /> {t('vocabularySaved')}</span>
                         ) : (
-                            <span className="text-muted-foreground">{vocabulary.length}/1000 characters</span>
+                            <span className="text-muted-foreground">{t('vocabularyCharacters', { count: vocabulary.length })}</span>
                         )}
                     </div>
                     <Button type="button" size="sm" onClick={saveVocabulary} disabled={isSavingVocabulary || !whisperIsActive}>
                         {isSavingVocabulary && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save vocabulary
+                        {t('saveVocabulary')}
                     </Button>
                 </div>
             </section>

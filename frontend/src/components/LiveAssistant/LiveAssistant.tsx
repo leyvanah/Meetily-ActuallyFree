@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { retrieveContext } from '@/lib/rag';
+import { useTranslations } from 'next-intl';
 
 /**
  * Live AI Assistant
@@ -32,39 +33,37 @@ const QUESTION_STARTERS = [
   'was', 'were', 'have', 'has', 'may', 'might', 'shall', 'tell me', 'explain',
 ];
 
-const PERSONAS: Record<string, { label: string; prompt: string }> = {
-  general: { label: 'General', prompt: '' },
-  sales: {
-    label: 'Sales call',
-    prompt: 'Act as a sales assistant. Focus on the prospect\'s needs, objections, buying signals, and suggested responses that move the deal forward.',
-  },
-  oneonone: {
-    label: '1:1 / coaching',
-    prompt: 'Act as a 1:1 coaching assistant. Focus on feedback, blockers, growth, and concrete action items.',
-  },
-  standup: {
-    label: 'Standup',
-    prompt: 'Act as a standup facilitator. Focus on progress, plans, and blockers. Keep answers terse.',
-  },
-  lecture: {
-    label: 'Lecture / study',
-    prompt: 'Act as a study assistant. Explain concepts clearly and simply, define jargon, and surface key takeaways.',
-  },
-  interview: {
-    label: 'Interview prep',
-    prompt: 'Act as an interview-preparation assistant for the user practicing on their own. Give concise, structured answers and talking points.',
-  },
-  technical: {
-    label: 'Technical',
-    prompt: 'Act as a technical assistant. Be precise, include code or commands when relevant, and call out trade-offs.',
-  },
+// Prompt text sent to the model (not user-facing UI copy, so not translated).
+// Display labels are translated separately via PERSONA_LABEL_KEYS + t().
+const PERSONA_PROMPTS: Record<string, string> = {
+  general: '',
+  sales:
+    'Act as a sales assistant. Focus on the prospect\'s needs, objections, buying signals, and suggested responses that move the deal forward.',
+  oneonone:
+    'Act as a 1:1 coaching assistant. Focus on feedback, blockers, growth, and concrete action items.',
+  standup:
+    'Act as a standup facilitator. Focus on progress, plans, and blockers. Keep answers terse.',
+  lecture:
+    'Act as a study assistant. Explain concepts clearly and simply, define jargon, and surface key takeaways.',
+  interview:
+    'Act as an interview-preparation assistant for the user practicing on their own. Give concise, structured answers and talking points.',
+  technical:
+    'Act as a technical assistant. Be precise, include code or commands when relevant, and call out trade-offs.',
 };
 
-const QUICK_ASKS = [
-  'Summarize the last 5 minutes',
-  'What action items came up?',
-  'What was decided?',
-];
+const PERSONA_KEYS = Object.keys(PERSONA_PROMPTS);
+
+const PERSONA_LABEL_KEYS: Record<string, string> = {
+  general: 'personaGeneral',
+  sales: 'personaSales',
+  oneonone: 'personaOneOnOne',
+  standup: 'personaStandup',
+  lecture: 'personaLecture',
+  interview: 'personaInterview',
+  technical: 'personaTechnical',
+};
+
+const QUICK_ASK_KEYS = ['quickAskSummarize', 'quickAskActionItems', 'quickAskDecided'];
 
 function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
@@ -85,6 +84,7 @@ interface QA {
 }
 
 export function LiveAssistant() {
+  const t = useTranslations('recording');
   const { transcripts } = useTranscripts();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState('');
@@ -113,7 +113,7 @@ export function LiveAssistant() {
   // Combine persona preset + user notes into the system-prompt guidance
   const buildPersona = useCallback(
     (extra = ''): string | null => {
-      const parts = [PERSONAS[persona]?.prompt || '', extra].filter(Boolean);
+      const parts = [PERSONA_PROMPTS[persona] || '', extra].filter(Boolean);
       if (notes.trim()) parts.push(`User-provided context/notes:\n${notes.trim()}`);
       const joined = parts.join('\n\n').trim();
       return joined || null;
@@ -183,7 +183,7 @@ export function LiveAssistant() {
         setHistory((prev) => prev.map((qa) => (qa.id === id ? { ...qa, answer, status: 'done' } : qa)));
         void fetchFollowups(id, q, answer);
       } catch (err) {
-        const msg = typeof err === 'string' ? err : (err as any)?.message || 'Request failed';
+        const msg = typeof err === 'string' ? err : (err as any)?.message || t('requestFailedError');
         setHistory((prev) =>
           prev.map((qa) => (qa.id === id ? { ...qa, answer: `⚠️ ${msg}`, status: 'error' } : qa)),
         );
@@ -199,7 +199,7 @@ export function LiveAssistant() {
   useEffect(() => {
     if (showRag && meetings.length === 0) {
       invoke<any[]>('api_get_meetings')
-        .then((ms) => setMeetings((ms || []).map((m) => ({ id: m.id, title: m.title || 'Untitled meeting' }))))
+        .then((ms) => setMeetings((ms || []).map((m) => ({ id: m.id, title: m.title || t('untitledMeeting') }))))
         .catch(() => {});
     }
   }, [showRag, meetings.length]);
@@ -278,12 +278,12 @@ export function LiveAssistant() {
     return (
       <button
         onClick={() => setOpen(true)}
-        title="Ask the live AI assistant (grounded in this meeting's transcript)"
+        title={t('askAiTooltip')}
         className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-blue-700"
       >
         <span aria-hidden>✨</span>
-        <span>Ask AI</span>
-        {autoSuggest && <span className="h-2 w-2 rounded-full bg-green-400" title="Auto-suggest on" />}
+        <span>{t('askAi')}</span>
+        {autoSuggest && <span className="h-2 w-2 rounded-full bg-green-400" title={t('autoSuggestOnTitle')} />}
       </button>
     );
   }
@@ -293,38 +293,38 @@ export function LiveAssistant() {
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
         <div className="flex items-center gap-2">
           <span aria-hidden>✨</span>
-          <span className="text-sm font-semibold text-gray-800">Live AI Assistant</span>
+          <span className="text-sm font-semibold text-gray-800">{t('liveAiAssistantTitle')}</span>
         </div>
         <div className="flex items-center gap-1">
           <select
             value={persona}
             onChange={(e) => setPersona(e.target.value)}
             className="rounded border border-gray-200 px-1 py-0.5 text-xs text-gray-600"
-            title="Persona / mode"
+            title={t('personaModeTitle')}
           >
-            {Object.entries(PERSONAS).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+            {PERSONA_KEYS.map((k) => (
+              <option key={k} value={k}>{t(PERSONA_LABEL_KEYS[k])}</option>
             ))}
           </select>
           <button
             onClick={() => setShowNotes((s) => !s)}
             className={`rounded px-2 py-1 text-xs hover:bg-gray-100 ${notes.trim() ? 'text-blue-600' : 'text-gray-500'}`}
-            title="Custom context / notes injected into every prompt"
+            title={t('notesTooltip')}
           >
-            Notes
+            {t('notesButton')}
           </button>
           <button
             onClick={() => setShowRag((s) => !s)}
             className={`rounded px-2 py-1 text-xs hover:bg-gray-100 ${ragOn ? 'text-blue-600' : 'text-gray-500'}`}
-            title="Search past meetings (RAG)"
+            title={t('searchPastMeetingsTooltip')}
           >
-            Past
+            {t('pastButton')}
           </button>
-          <label className="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100" title="Auto-suggest an answer when a question is heard">
+          <label className="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100" title={t('autoSuggestTooltip')}>
             <input type="checkbox" checked={autoSuggest} onChange={(e) => setAutoSuggest(e.target.checked)} className="h-3 w-3" />
-            Auto
+            {t('autoLabel')}
           </label>
-          <button onClick={() => setOpen(false)} className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100" title="Minimize">✕</button>
+          <button onClick={() => setOpen(false)} className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100" title={t('minimizeTooltip')}>✕</button>
         </div>
       </div>
 
@@ -334,7 +334,7 @@ export function LiveAssistant() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Context the AI should always know: agenda, participant names, jargon, your goals…"
+            placeholder={t('notesPlaceholder')}
             className="w-full resize-none rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-400 focus:outline-none"
           />
         </div>
@@ -344,11 +344,11 @@ export function LiveAssistant() {
         <div className="border-b border-gray-100 bg-gray-50 p-2 text-xs">
           <label className="mb-1 flex items-center gap-2">
             <input type="checkbox" checked={ragOn} onChange={(e) => setRagOn(e.target.checked)} />
-            <span className="font-medium text-gray-700">Search past meetings (RAG)</span>
+            <span className="font-medium text-gray-700">{t('searchPastMeetingsTooltip')}</span>
           </label>
           <div className="max-h-28 overflow-y-auto rounded border border-gray-200 bg-white">
             {meetings.length === 0 ? (
-              <div className="p-2 text-gray-400">No past meetings found.</div>
+              <div className="p-2 text-gray-400">{t('noPastMeetingsFound')}</div>
             ) : (
               meetings.map((m) => (
                 <label key={m.id} className="flex cursor-pointer items-center gap-2 px-2 py-1 hover:bg-gray-50">
@@ -370,20 +370,20 @@ export function LiveAssistant() {
             )}
           </div>
           <div className="mt-1 text-gray-400">
-            Requires Ollama + an embedding model (<code>ollama pull nomic-embed-text</code>).
+            {t.rich('requiresOllamaEmbedding', { code: (chunks) => <code>{chunks}</code> })}
           </div>
         </div>
       )}
 
       <div className="flex flex-wrap gap-1 border-b border-gray-100 px-2 py-1.5">
-        {QUICK_ASKS.map((q) => (
+        {QUICK_ASK_KEYS.map((key) => (
           <button
-            key={q}
-            onClick={() => askText(q)}
+            key={key}
+            onClick={() => askText(t(key))}
             disabled={busy}
             className="rounded-full border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50"
           >
-            {q}
+            {t(key)}
           </button>
         ))}
       </div>
@@ -391,21 +391,21 @@ export function LiveAssistant() {
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {history.length === 0 && (
           <div className="mt-6 text-center text-xs text-gray-400">
-            Ask anything about the live conversation, or use a chip above.
+            {t('emptyHistoryHint1')}
             <br /><br />
-            Pick a <strong>persona</strong>, add <strong>Notes</strong>, or turn on <strong>Auto</strong> to draft answers as questions come up.
+            {t.rich('emptyHistoryHint2', { b: (chunks) => <strong>{chunks}</strong> })}
           </div>
         )}
         {history.map((qa) => (
           <div key={qa.id} className="space-y-1">
             <div className="ml-auto flex w-fit max-w-[85%] items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white">
-              {qa.auto && <span className="rounded bg-blue-800 px-1 text-[10px] uppercase tracking-wide">auto</span>}
+              {qa.auto && <span className="rounded bg-blue-800 px-1 text-[10px] uppercase tracking-wide">{t('autoBadge')}</span>}
               <span>{qa.question}</span>
             </div>
             <div className="w-fit max-w-[92%] rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-800">
               {qa.status === 'pending' ? (
                 <span className="inline-flex items-center gap-1 text-gray-500">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" /> Thinking…
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" /> {t('thinkingEllipsis')}
                 </span>
               ) : (
                 <>
@@ -414,7 +414,7 @@ export function LiveAssistant() {
                   </div>
                   {qa.humanized && (
                     <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-sm text-green-900">
-                      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-600">Say it naturally</div>
+                      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-600">{t('sayItNaturallyHeader')}</div>
                       {qa.humanized}
                     </div>
                   )}
@@ -423,9 +423,9 @@ export function LiveAssistant() {
                       onClick={() => humanize(qa)}
                       disabled={busy}
                       className="mt-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
-                      title="Rewrite this to sound natural spoken aloud"
+                      title={t('sayItNaturallyTooltip')}
                     >
-                      🗣️ Say it naturally
+                      {t('sayItNaturallyButton')}
                     </button>
                   )}
                   {qa.followups && qa.followups.length > 0 && (
@@ -456,11 +456,11 @@ export function LiveAssistant() {
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={2}
-            placeholder="Ask about the meeting…  (Enter to send)"
+            placeholder={t('askPlaceholder')}
             className="flex-1 resize-none rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
           />
           <button onClick={ask} disabled={busy || !question.trim()} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:bg-gray-300">
-            {busy ? '…' : 'Ask'}
+            {busy ? '…' : t('askButton')}
           </button>
         </div>
       </div>

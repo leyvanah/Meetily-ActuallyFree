@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { RefreshCw, Globe, Loader2, AlertCircle, CheckCircle2, X, Cpu, BookOpen } from 'lucide-react';
 import {
   Dialog,
@@ -70,6 +71,8 @@ export function RetranscribeDialog({
   meetingFolderPath,
   onComplete,
 }: RetranscribeDialogProps) {
+  const t = useTranslations('meetingDetails');
+  const tc = useTranslations('common');
   const router = useRouter();
   const { selectedLanguage, transcriptModelConfig } = useConfig();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -198,9 +201,7 @@ export function RetranscribeDialog({
             });
 
             setIsProcessing(false);
-            toast.success(
-              `Retranscription complete! ${event.payload.segments_count} segments created.`
-            );
+            toast.success(t('retranscribeComplete', { count: event.payload.segments_count }));
             onCompleteRef.current?.();
             onOpenChangeRef.current(false);
           }
@@ -236,7 +237,7 @@ export function RetranscribeDialog({
 
     void setupListeners().catch((listenerError) => {
       if (!cleanedUpRef.current) {
-        setError(`Could not prepare retranscription events: ${String(listenerError)}`);
+        setError(t('retranscribeEventsFailed', { error: String(listenerError) }));
       }
     });
 
@@ -249,11 +250,11 @@ export function RetranscribeDialog({
 
   const handleStartRetranscription = async () => {
     if (!listenersReady) {
-      setError('Retranscription is still initializing. Please try again.');
+      setError(t('retranscribeInitializing'));
       return;
     }
     if (!meetingFolderPath) {
-      setError('Meeting folder path not available');
+      setError(t('retranscribeNoFolder'));
       return;
     }
 
@@ -294,7 +295,7 @@ export function RetranscribeDialog({
         await invoke('cancel_retranscription_command');
         setIsProcessing(false);
         setProgress(null);
-        toast.info('Retranscription cancelled');
+        toast.info(t('retranscribeCancelled'));
       } catch (err) {
         console.error('Failed to cancel retranscription:', err);
       }
@@ -310,7 +311,7 @@ export function RetranscribeDialog({
         vocabulary: '',
       });
       setSavedMeetingVocabulary('');
-      toast.success('Meeting vocabulary cleared');
+      toast.success(t('retranscribeVocabularyCleared'));
     } catch (clearError) {
       toast.error(typeof clearError === 'string' ? clearError : String(clearError));
     } finally {
@@ -350,26 +351,26 @@ export function RetranscribeDialog({
             {isProcessing ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                Retranscribing...
+                {t('retranscribeTitleProcessing')}
               </>
             ) : error ? (
               <>
                 <AlertCircle className="h-5 w-5 text-red-600" />
-                Retranscription Failed
+                {t('retranscribeTitleFailed')}
               </>
             ) : (
               <>
                 <RefreshCw className="h-5 w-5 text-blue-600" />
-                Retranscribe Meeting
+                {t('retranscribeTitle')}
               </>
             )}
           </DialogTitle>
           <DialogDescription>
             {isProcessing
-              ? progress?.message || 'Processing audio...'
+              ? progress?.message || t('retranscribeDescriptionProcessing')
               : error
-                ? 'An error occurred during retranscription'
-                : 'Re-process the audio with a different model, language, or vocabulary hints'}
+                ? t('retranscribeDescriptionFailed')
+                : t('retranscribeDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -379,11 +380,11 @@ export function RetranscribeDialog({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Language</span>
+                  <span className="text-sm font-medium">{t('retranscribeLanguage')}</span>
                 </div>
                 <Select value={selectedLang} onValueChange={setSelectedLang}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select language" />
+                    <SelectValue placeholder={t('retranscribeSelectLanguage')} />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
                     {LANGUAGES.map((lang) => (
@@ -394,17 +395,17 @@ export function RetranscribeDialog({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Select a specific language to improve accuracy, or use auto-detect
+                  {t('retranscribeLanguageHint')}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Language</span>
+                  <span className="text-sm font-medium">{t('retranscribeLanguage')}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Language selection isn't supported for Parakeet. It always uses automatic detection.
+                  {t('retranscribeParakeetLanguageHint')}
                 </p>
               </div>
             )
@@ -414,7 +415,7 @@ export function RetranscribeDialog({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Cpu className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Model</span>
+                <span className="text-sm font-medium">{t('retranscribeModel')}</span>
               </div>
               <Select
                 value={selectedModelKey}
@@ -428,7 +429,7 @@ export function RetranscribeDialog({
                 disabled={loadingModels}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={loadingModels ? "Loading models..." : "Select model"} />
+                  <SelectValue placeholder={loadingModels ? t('retranscribeLoadingModels') : t('retranscribeSelectModel')} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableModels.map((model) => (
@@ -438,7 +439,7 @@ export function RetranscribeDialog({
                   ))}
                   {!hasWhisperModel && (
                     <SelectItem value="install:whisper">
-                      + Install a Whisper model...
+                      {t('retranscribeInstallWhisperOption')}
                     </SelectItem>
                   )}
                 </SelectContent>
@@ -449,22 +450,22 @@ export function RetranscribeDialog({
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">Parakeet</span>
                       <span className={hasParakeetModel ? 'text-emerald-600' : 'text-muted-foreground'}>
-                        {hasParakeetModel ? 'Installed' : 'Not installed'}
+                        {hasParakeetModel ? t('retranscribeInstalled') : t('retranscribeNotInstalled')}
                       </span>
                     </div>
                     <p className="mt-1 text-muted-foreground">
-                      Faster and smaller with automatic language detection. Does not support vocabulary hints.
+                      {t('retranscribeParakeetSummary')}
                     </p>
                   </div>
                   <div className="rounded-md border border-border bg-muted/30 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">Whisper</span>
                       <span className={hasWhisperModel ? 'text-emerald-600' : 'text-amber-600'}>
-                        {hasWhisperModel ? 'Installed' : 'Optional'}
+                        {hasWhisperModel ? t('retranscribeInstalled') : t('retranscribeOptional')}
                       </span>
                     </div>
                     <p className="mt-1 text-muted-foreground">
-                      Better control for names and jargon, with vocabulary hints and manual language selection. Usually slower and larger.
+                      {t('retranscribeWhisperSummary')}
                     </p>
                     {!hasWhisperModel && (
                       <Button
@@ -474,7 +475,7 @@ export function RetranscribeDialog({
                         className="mt-2 h-7 w-full text-xs"
                         onClick={openWhisperSettings}
                       >
-                        Install Whisper
+                        {t('retranscribeInstallWhisper')}
                       </Button>
                     )}
                   </div>
@@ -487,22 +488,22 @@ export function RetranscribeDialog({
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Add vocabulary hints</span>
+                <span className="text-sm font-medium">{t('retranscribeVocabularyTitle')}</span>
               </div>
               <Textarea
                 value={vocabularyTerms}
                 onChange={(event) => setVocabularyTerms(event.target.value)}
                 maxLength={1000}
                 rows={3}
-                placeholder={'Participant names, company names, acronyms, or technical terms'}
+                placeholder={t('retranscribeVocabularyPlaceholder')}
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Meeting terms take priority within Whisper&apos;s prompt limit.</span>
+                <span>{t('retranscribeVocabularyPriority')}</span>
                 <span>{vocabularyTerms.length}/1000</span>
               </div>
               {vocabularyTerms.trim() && (
                 <div className="space-y-2">
-                  <span className="text-xs font-medium">Use these terms for</span>
+                  <span className="text-xs font-medium">{t('retranscribeVocabularyScopeLabel')}</span>
                   <Select
                     value={vocabularyScope}
                     onValueChange={(value) => setVocabularyScope(value as 'meeting' | 'global')}
@@ -511,8 +512,8 @@ export function RetranscribeDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="meeting">This meeting only</SelectItem>
-                      <SelectItem value="global">This and future meetings</SelectItem>
+                      <SelectItem value="meeting">{t('retranscribeVocabularyScopeMeeting')}</SelectItem>
+                      <SelectItem value="global">{t('retranscribeVocabularyScopeGlobal')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -520,7 +521,7 @@ export function RetranscribeDialog({
               {savedMeetingVocabulary && (
                 <div className="rounded-md bg-muted/60 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium">Already saved for this meeting</p>
+                    <p className="text-xs font-medium">{t('retranscribeVocabularySaved')}</p>
                     <Button
                       type="button"
                       variant="ghost"
@@ -529,7 +530,7 @@ export function RetranscribeDialog({
                       disabled={isClearingMeetingVocabulary}
                       onClick={clearMeetingVocabulary}
                     >
-                      {isClearingMeetingVocabulary ? 'Clearing...' : 'Clear'}
+                      {isClearingMeetingVocabulary ? t('retranscribeVocabularyClearing') : tc('clear')}
                     </Button>
                   </div>
                   <p className="mt-1 max-h-16 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
@@ -571,7 +572,7 @@ export function RetranscribeDialog({
           {!isProcessing && !error && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+                {tc('cancel')}
               </Button>
               <Button
                 onClick={handleStartRetranscription}
@@ -579,20 +580,20 @@ export function RetranscribeDialog({
                 disabled={!meetingFolderPath || !listenersReady || isClearingMeetingVocabulary || loadingModels || !selectedModelDetails}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Start Retranscription
+                {t('retranscribeStart')}
               </Button>
             </>
           )}
           {isProcessing && (
             <Button variant="outline" onClick={handleCancel}>
               <X className="h-4 w-4 mr-2" />
-              Cancel
+              {tc('cancel')}
             </Button>
           )}
           {error && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
+                {t('retranscribeClose')}
               </Button>
               <Button
                 onClick={() => {
@@ -601,7 +602,7 @@ export function RetranscribeDialog({
                 }}
                 variant="outline"
               >
-                Try Again
+                {t('retranscribeTryAgain')}
               </Button>
             </>
           )}

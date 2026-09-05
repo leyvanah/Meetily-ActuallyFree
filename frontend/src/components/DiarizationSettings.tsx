@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import { invoke } from "@tauri-apps/api/core"
 import { listen, UnlistenFn } from "@tauri-apps/api/event"
 import { toast } from "sonner"
@@ -28,6 +29,7 @@ function formatMB(bytes: number): string {
  * from this fork's own GitHub release, or dropped in manually.
  */
 export function DiarizationSettings() {
+  const t = useTranslations('settings');
   const [available, setAvailable] = useState<boolean | null>(null);
   const [dir, setDir] = useState<string>('');
   const [downloadSize, setDownloadSize] = useState<number>(0);
@@ -64,13 +66,13 @@ export function DiarizationSettings() {
       );
 
       await invoke('download_diarization_models');
-      toast.success('Speaker models installed', {
-        description: 'You can now use Speakers on any meeting with a recording.',
+      toast.success(t('diarizationInstalledTitle'), {
+        description: t('diarizationInstalledDescription'),
       });
       refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error('Model download failed', { description: msg });
+      toast.error(t('diarizationDownloadFailed'), { description: msg });
     } finally {
       if (unlistenRef.current) {
         unlistenRef.current();
@@ -79,7 +81,7 @@ export function DiarizationSettings() {
       setIsDownloading(false);
       setProgress(null);
     }
-  }, [isDownloading, refresh]);
+  }, [isDownloading, refresh, t]);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
@@ -87,12 +89,10 @@ export function DiarizationSettings() {
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-500" />
-            Speaker Identification
+            {t('diarizationTitle')}
           </h3>
           <p className="text-sm text-gray-600">
-            Labels your transcript with <strong>Speaker 1/2/3…</strong> by analyzing voices in the
-            recording. Runs entirely on-device. Open a meeting and click{' '}
-            <strong>Speakers</strong> above the transcript to run it.
+            {t.rich('diarizationDescription', { b: (chunks) => <strong>{chunks}</strong> })}
           </p>
         </div>
         {available !== null && (
@@ -102,14 +102,14 @@ export function DiarizationSettings() {
             }`}
           >
             {available ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-            {available ? 'Ready' : 'Models missing'}
+            {available ? t('diarizationReady') : t('diarizationModelsMissing')}
           </span>
         )}
       </div>
 
       {available === true && (
         <p className="mt-3 text-sm text-gray-500">
-          Models ship with the app — nothing to download.
+          {t('diarizationBundled')}
         </p>
       )}
 
@@ -117,13 +117,13 @@ export function DiarizationSettings() {
       {available === false && !isDownloading && (
         <div className="mt-4 rounded-md bg-amber-50 p-4">
           <p className="text-sm text-amber-900 mb-3">
-            The bundled speaker models couldn&apos;t be found. You can re-download them
-            {downloadSize > 0 && <> (~{formatMB(downloadSize)})</>} from this app&apos;s GitHub
-            release — files are verified with SHA-256.
+            {t('diarizationRepairNote', {
+              size: downloadSize > 0 ? t('diarizationRepairSize', { size: formatMB(downloadSize) }) : '',
+            })}
           </p>
           <Button size="sm" onClick={handleDownload} className="bg-blue-600 text-white hover:bg-blue-700">
             <Download size={16} className="mr-1.5" />
-            Re-download models
+            {t('diarizationRedownload')}
           </Button>
         </div>
       )}
@@ -134,10 +134,14 @@ export function DiarizationSettings() {
           <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
             <Loader2 className="w-4 h-4 animate-spin" />
             {progress?.status === 'verifying'
-              ? `Verifying ${progress.file}…`
+              ? t('diarizationVerifying', { file: progress.file })
               : progress?.file
-                ? `Downloading ${progress.file} (${progress.file_index}/${progress.file_count})`
-                : 'Starting download…'}
+                ? t('diarizationDownloading', {
+                    file: progress.file,
+                    index: progress.file_index,
+                    count: progress.file_count,
+                  })
+                : t('diarizationStarting')}
           </div>
 
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-blue-100">
@@ -162,20 +166,17 @@ export function DiarizationSettings() {
         <div className="mt-4 p-3 border rounded-lg bg-gray-50">
           <div className="text-xs font-medium text-gray-700 mb-1 flex items-center gap-1.5">
             <FolderOpen className="w-3.5 h-3.5" />
-            Model folder
+            {t('diarizationModelFolder')}
           </div>
           <div className="text-xs text-gray-600 break-all font-mono">{dir}</div>
           <div className="mt-1.5 text-xs text-gray-500">
-            Drop your own <code>segmentation-3.0-fp16.onnx</code>,{' '}
-            <code>wespeaker-resnet34-LM.onnx</code> and <code>xvec_transform.npz</code> here to
-            override the bundled models.
+            {t.rich('diarizationOverrideNote', { c: (chunks) => <code>{chunks}</code> })}
           </div>
         </div>
       )}
 
       <p className="mt-4 text-xs text-gray-400">
-        Models: pyannote <code>segmentation-3.0</code> (MIT) · WeSpeaker ResNet34 (Apache-2.0) · VBx
-        x-vector transform (Apache-2.0). Credit to their respective authors.
+        {t.rich('diarizationCredits', { c: (chunks) => <code>{chunks}</code> })}
       </p>
     </div>
   );

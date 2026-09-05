@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
+
 interface ConfidenceIndicatorProps {
   confidence: number;
   showIndicator?: boolean;
@@ -9,6 +11,8 @@ export const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
   confidence,
   showIndicator = true,
 }) => {
+  const t = useTranslations('recording');
+
   // Don't render if preference is disabled
   if (!showIndicator) {
     return null;
@@ -24,10 +28,10 @@ export const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
 
   // Get descriptive label for accessibility
   const getConfidenceLabel = (conf: number): string => {
-    if (conf >= 0.8) return 'High confidence';
-    if (conf >= 0.7) return 'Good confidence';
-    if (conf >= 0.4) return 'Medium confidence';
-    return 'Low confidence';
+    if (conf >= 0.8) return t('highConfidence');
+    if (conf >= 0.7) return t('goodConfidence');
+    if (conf >= 0.4) return t('mediumConfidence');
+    return t('lowConfidence');
   };
 
   const confidencePercent = (confidence * 100).toFixed(0);
@@ -37,8 +41,8 @@ export const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
   return (
     <div
       className="flex items-center gap-1"
-      title={`${confidencePercent}% confidence - ${label}`}
-      aria-label={`Transcription confidence: ${confidencePercent}%`}
+      title={t('confidenceTitle', { percent: confidencePercent, label })}
+      aria-label={t('transcriptionConfidenceAria', { percent: confidencePercent })}
     >
       <div
         className={`w-2 h-2 rounded-full ${colorClass} transition-colors duration-200`}

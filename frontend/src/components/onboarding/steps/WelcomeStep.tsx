@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { invoke } from '@tauri-apps/api/core';
 import { Lock, Sparkles, Cpu, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import { usePlatform } from '@/hooks/usePlatform';
 
 export function WelcomeStep() {
+  const t = useTranslations('onboarding');
   const { goNext } = useOnboarding();
   const platform = usePlatform();
   const updatesSupported = platform !== 'macos';
@@ -16,15 +18,15 @@ export function WelcomeStep() {
   const features = [
     {
       icon: Lock,
-      title: 'Your data never leaves your device',
+      title: t('featurePrivacy'),
     },
     {
       icon: Sparkles,
-      title: 'Intelligent summaries & insights',
+      title: t('featureSummaries'),
     },
     {
       icon: Cpu,
-      title: 'Works offline, no cloud required',
+      title: t('featureOffline'),
     },
   ];
 
@@ -46,8 +48,8 @@ export function WelcomeStep() {
 
   return (
     <OnboardingContainer
-      title="Welcome to Meetily"
-      description="Record. Transcribe. Summarize. All on your device."
+      title={t('welcomeTitle')}
+      description={t('welcomeDescription')}
       step={1}
       hideProgress={true}
     >
@@ -78,9 +80,9 @@ export function WelcomeStep() {
               <RefreshCw className="h-3.5 w-3.5 text-gray-700" />
             </div>
             <div>
-              <h2 className="text-sm font-medium text-gray-900">Check for updates when Meetily starts?</h2>
+              <h2 className="text-sm font-medium text-gray-900">{t('updatesQuestion')}</h2>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                This checks this fork&apos;s GitHub releases. No analytics or usage data is sent.
+                {t('updatesNote')}
               </p>
             </div>
           </div>
@@ -95,7 +97,7 @@ export function WelcomeStep() {
                   : 'border-gray-200 text-gray-700 hover:border-gray-400'
               }`}
             >
-              Yes, check on launch
+              {t('updatesYes')}
             </button>
             <button
               type="button"
@@ -107,7 +109,7 @@ export function WelcomeStep() {
                   : 'border-gray-200 text-gray-700 hover:border-gray-400'
               }`}
             >
-              No, I&apos;ll check manually
+              {t('updatesNo')}
             </button>
           </div>
         </div>}
@@ -120,10 +122,10 @@ export function WelcomeStep() {
               disabled={saving}
               className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
             >
-              {saving ? 'Saving…' : 'Get Started'}
+              {saving ? t('saving') : t('getStarted')}
             </Button>
           )}
-          <p className="text-xs text-center text-gray-500">Takes less than 3 minutes</p>
+          <p className="text-xs text-center text-gray-500">{t('takesLessThan')}</p>
         </div>
       </div>
     </OnboardingContainer>

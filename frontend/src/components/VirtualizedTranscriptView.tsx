@@ -32,6 +32,7 @@ import { ConfidenceIndicator } from "./ConfidenceIndicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { motion } from "framer-motion";
 import { TranscriptSegmentData } from "@/types";
+import { useTranslations } from "next-intl";
 
 export interface VirtualizedTranscriptViewProps {
     /** Transcript segments to display */
@@ -221,7 +222,8 @@ const TranscriptSegment = memo(function TranscriptSegment({
     /** When provided, speaker labels become clickable for renaming. */
     onRenameSpeaker?: (speaker: string) => void;
 }) {
-    const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+    const t = useTranslations('recording');
+    const displayText = cleanStopWords(text) || (text.trim() === '' ? t('silencePlaceholder') : text);
 
     // Split conversation: local user ("You" + their name) on the right in blue,
     // everyone else on the left in purple/hashed colors. Timestamps stay shared
@@ -245,7 +247,7 @@ const TranscriptSegment = memo(function TranscriptSegment({
                             <button
                                 type="button"
                                 onClick={() => onRenameSpeaker(speaker)}
-                                title={`Rename "${speaker}" - click to say who this is`}
+                                title={t('renameSpeakerTitle', { speaker })}
                                 className={`text-xs font-semibold ${speakerColor(speaker)} rounded hover:underline`}
                             >
                                 {label}
@@ -307,6 +309,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     onRenameSpeaker,
 }) => {
+    const t = useTranslations('recording');
     // Greet the user by name when they've set one (Settings → General → Your
     // Name). Read on mount rather than at module scope so it picks up changes
     // without a reload, and guards `window` for SSR.
@@ -442,18 +445,18 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                 <div className={`w-3 h-3 rounded-full ${isPaused ? 'bg-orange-500' : 'bg-blue-500 animate-pulse'}`}></div>
                             </div>
                             <p className="text-sm text-gray-600">
-                                {isPaused ? 'Recording paused' : 'Listening for speech...'}
+                                {isPaused ? t('recordingPausedMessage') : t('listeningForSpeech')}
                             </p>
                             <p className="text-xs mt-1 text-gray-400">
-                                {isPaused ? 'Click resume to continue recording' : 'Speak to see live transcription'}
+                                {isPaused ? t('clickResumeToContinue') : t('speakToSeeLiveTranscription')}
                             </p>
                         </>
                     ) : (
                         <>
                             <p className="text-lg font-semibold">
-                                {userName ? `Welcome back, ${userName}!` : 'Welcome to Meetily · Actually Free'}
+                                {userName ? t('welcomeBack', { userName }) : t('welcomeToApp')}
                             </p>
-                            <p className="text-xs mt-1">Start recording to see live transcription</p>
+                            <p className="text-xs mt-1">{t('startRecordingToSeeTranscription')}</p>
                         </>
                     )}
                 </motion.div>
@@ -506,11 +509,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {isLoadingMore ? (
                                 <div className="flex items-center gap-2 text-gray-500">
                                     <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                                    <span className="text-sm">Loading more...</span>
+                                    <span className="text-sm">{t('loadingMore')}</span>
                                 </div>
                             ) : hasMore && totalCount > 0 ? (
                                 <span className="text-sm text-gray-400">
-                                    Showing {loadedCount} of {totalCount} segments
+                                    {t('showingSegments', { loaded: loadedCount, total: totalCount })}
                                 </span>
                             ) : null}
                         </div>
@@ -523,11 +526,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {!isPaused && (
                                 <>
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                                    <span className="text-sm">Listening…</span>
+                                    <span className="text-sm">{t('listeningEllipsis')}</span>
                                 </>
                             )}
                             {isPaused && (
-                                <span className="text-sm text-orange-400/80">Paused</span>
+                                <span className="text-sm text-orange-400/80">{t('paused')}</span>
                             )}
                         </div>
                     )}
@@ -568,11 +571,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {isLoadingMore ? (
                                 <div className="flex items-center gap-2 text-gray-500">
                                     <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                                    <span className="text-sm">Loading more...</span>
+                                    <span className="text-sm">{t('loadingMore')}</span>
                                 </div>
                             ) : hasMore && totalCount > 0 ? (
                                 <span className="text-sm text-gray-400">
-                                    Showing {loadedCount} of {totalCount} segments
+                                    {t('showingSegments', { loaded: loadedCount, total: totalCount })}
                                 </span>
                             ) : null}
                         </div>
@@ -583,11 +586,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {!isPaused && (
                                 <>
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                                    <span className="text-sm">Listening…</span>
+                                    <span className="text-sm">{t('listeningEllipsis')}</span>
                                 </>
                             )}
                             {isPaused && (
-                                <span className="text-sm text-orange-400/80">Paused</span>
+                                <span className="text-sm text-orange-400/80">{t('paused')}</span>
                             )}
                         </div>
                     )}
