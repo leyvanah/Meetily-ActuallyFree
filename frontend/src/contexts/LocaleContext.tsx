@@ -10,12 +10,22 @@ export type AppLocale = 'ru' | 'en';
 const LOCALE_STORAGE_KEY = 'meetily_locale';
 const VALID_LOCALES: readonly AppLocale[] = ['ru', 'en'];
 
-// Same localStorage-preference pattern as app-theme.ts: default locale
-// (ru) unless the user picked otherwise in Settings.
+// First run has no stored preference, so follow the system language: a Russian
+// locale gets `ru`, everything else falls back to `en`.
+function detectSystemLocale(): AppLocale {
+  if (typeof navigator === 'undefined') return 'ru';
+  const candidates = [navigator.language, ...(navigator.languages ?? [])];
+  return candidates.some((tag) => tag?.toLowerCase().startsWith('ru')) ? 'ru' : 'en';
+}
+
+// Same localStorage-preference pattern as app-theme.ts: the user's choice in
+// Settings wins, otherwise the system language decides.
 function getSavedAppLocale(): AppLocale {
   if (typeof window === 'undefined') return 'ru';
   const saved = localStorage.getItem(LOCALE_STORAGE_KEY);
-  return (VALID_LOCALES as readonly string[]).includes(saved ?? '') ? (saved as AppLocale) : 'ru';
+  return (VALID_LOCALES as readonly string[]).includes(saved ?? '')
+    ? (saved as AppLocale)
+    : detectSystemLocale();
 }
 
 const MESSAGES: Record<AppLocale, typeof enMessages> = {
