@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon, Radar, Info, Cpu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,17 +18,20 @@ import { LocalStackStatus } from '@/components/LocalStackStatus';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
+// Labels are message keys; they are resolved per render so the tab strip
+// follows the active locale.
 const TABS = [
-  { value: 'general', label: 'General', icon: Settings2 },
-  { value: 'recording', label: 'Recording', icon: Mic },
-  { value: 'Transcriptionmodels', label: 'Transcription', icon: DatabaseIcon },
-  { value: 'summaryModels', label: 'Summary', icon: SparkleIcon },
-  { value: 'meetingDetection', label: 'Detection', icon: Radar },
-  { value: 'localStack', label: 'Local stack', icon: Cpu },
-  { value: 'about', label: 'About', icon: Info },
+  { value: 'general', labelKey: 'tabGeneral', icon: Settings2 },
+  { value: 'recording', labelKey: 'tabRecording', icon: Mic },
+  { value: 'Transcriptionmodels', labelKey: 'tabTranscription', icon: DatabaseIcon },
+  { value: 'summaryModels', labelKey: 'tabSummary', icon: SparkleIcon },
+  { value: 'meetingDetection', labelKey: 'tabDetection', icon: Radar },
+  { value: 'localStack', labelKey: 'tabLocalStack', icon: Cpu },
+  { value: 'about', labelKey: 'tabAbout', icon: Info },
 ] as const;
 
 export default function SettingsPage() {
+  const t = useTranslations('settings');
   const router = useRouter();
   const { transcriptModelConfig, setTranscriptModelConfig } = useConfig();
 
@@ -104,9 +108,9 @@ export default function SettingsPage() {
               className="flex shrink-0 items-center gap-2 text-gray-600 transition-colors hover:text-gray-900"
             >
               <ArrowLeft className="h-5 w-5" />
-              <span className="hidden sm:inline">Back</span>
+              <span className="hidden sm:inline">{t('back')}</span>
             </button>
-            <h1 className="truncate text-2xl font-bold sm:text-3xl">Settings</h1>
+            <h1 className="truncate text-2xl font-bold sm:text-3xl">{t('pageTitle')}</h1>
           </div>
         </div>
       </div>
@@ -133,7 +137,7 @@ export default function SettingsPage() {
                         className="relative z-10 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-none border-0 bg-transparent px-3 py-3 text-sm text-gray-600 shadow-none hover:text-gray-900 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none sm:gap-2 sm:px-4 sm:py-4"
                       >
                         <Icon className="h-4 w-4 shrink-0" />
-                        <span>{tab.label}</span>
+                        <span>{t(tab.labelKey)}</span>
                       </TabsTrigger>
                     );
                   })}
