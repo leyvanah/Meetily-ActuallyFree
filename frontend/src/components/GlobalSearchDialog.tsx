@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -39,10 +40,10 @@ function formatAudioTime(seconds: number): string {
     : `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-function formatResultDate(value: string): string {
+function formatResultDate(value: string, locale: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
@@ -56,13 +57,17 @@ function resultIcon(kind: GlobalSearchResult['kind']) {
   return <CalendarDays className="h-4 w-4" />;
 }
 
-function kindLabel(kind: GlobalSearchResult['kind']): string {
-  if (kind === 'transcript') return 'Transcript';
-  if (kind === 'summary') return 'Summary';
-  return 'Meeting';
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+function kindLabel(kind: GlobalSearchResult['kind'], t: Translate): string {
+  if (kind === 'transcript') return t('searchKindTranscript');
+  if (kind === 'summary') return t('searchKindSummary');
+  return t('searchKindMeeting');
 }
 
 export default function GlobalSearchDialog() {
+  const t = useTranslations('dialogs');
+  const locale = useLocale();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -156,7 +161,7 @@ export default function GlobalSearchDialog() {
       result.kind === 'transcript' && result.audioStartTime != null
         ? formatAudioTime(result.audioStartTime)
         : undefined,
-      result.timestamp ? formatResultDate(result.timestamp) : undefined,
+      result.timestamp ? formatResultDate(result.timestamp, locale) : undefined,
     ].filter(Boolean);
 
     return (
@@ -173,7 +178,7 @@ export default function GlobalSearchDialog() {
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-[var(--af-text)]">{result.title}</span>
             <span className="shrink-0 rounded-md border border-[var(--af-border)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--af-text-3)]">
-              {kindLabel(result.kind)}
+              {kindLabel(result.kind, t)}
             </span>
           </span>
           {result.snippet && (
@@ -196,7 +201,7 @@ export default function GlobalSearchDialog() {
     <CommandDialog
       open={open}
       onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : close())}
-      title="Search people and meeting records"
+      title={t('searchTitle')}
       contentClassName="top-[44%] max-w-2xl gap-0 border-[var(--af-border-strong)] bg-[var(--af-panel)] shadow-2xl"
       commandProps={{
         shouldFilter: false,
@@ -207,7 +212,7 @@ export default function GlobalSearchDialog() {
         <CommandInput
           value={query}
           onValueChange={setQuery}
-          placeholder="Search people, meetings, transcripts, and summaries..."
+          placeholder={t('searchPlaceholder')}
           className="h-12 pr-10 text-[15px] text-[var(--af-text)] placeholder:text-[var(--af-text-3)]"
         />
       </div>
@@ -218,31 +223,31 @@ export default function GlobalSearchDialog() {
             <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--af-border)] bg-[var(--af-panel-2)] text-[var(--af-accent)]">
               <Search className="h-5 w-5" />
             </span>
-            <p className="text-sm font-medium text-[var(--af-text)]">Find anything you remember</p>
+            <p className="text-sm font-medium text-[var(--af-text)]">{t('searchEmptyTitle')}</p>
             <p className="mt-1 max-w-sm text-xs leading-relaxed text-[var(--af-text-3)]">
-              Search a person, meeting title, spoken phrase, or detail from an AI summary.
+              {t('searchEmptyHint')}
             </p>
           </div>
         ) : loading ? (
           <div className="flex min-h-56 flex-col items-center justify-center gap-3 text-sm text-[var(--af-text-2)]">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--af-accent)]" />
-            Searching your meeting library...
+            {t('searchLoading')}
           </div>
         ) : error ? (
           <div className="flex min-h-56 flex-col items-center justify-center px-8 text-center">
-            <p className="text-sm font-medium text-red-400">Search is unavailable</p>
+            <p className="text-sm font-medium text-red-400">{t('searchUnavailable')}</p>
             <p className="mt-1 max-w-md text-xs leading-relaxed text-[var(--af-text-3)]">{error}</p>
           </div>
         ) : results.length === 0 ? (
           <div className="flex min-h-56 flex-col items-center justify-center px-8 text-center">
-            <p className="text-sm font-medium text-[var(--af-text)]">No results for "{query.trim()}"</p>
-            <p className="mt-1 text-xs text-[var(--af-text-3)]">Try a name, topic, or a shorter phrase.</p>
+            <p className="text-sm font-medium text-[var(--af-text)]">{t('searchNoResults', { query: query.trim() })}</p>
+            <p className="mt-1 text-xs text-[var(--af-text-3)]">{t('searchNoResultsHint')}</p>
           </div>
         ) : (
           <>
             {people.length > 0 && (
               <CommandGroup
-                heading="People"
+                heading={t('searchGroupPeople')}
                 className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-[var(--af-text-3)]"
               >
                 {people.map((result) => (
@@ -258,7 +263,7 @@ export default function GlobalSearchDialog() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-[var(--af-text)]">{result.title}</span>
                       <span className="mt-0.5 block truncate text-xs text-[var(--af-text-2)]">
-                        {result.snippet || 'View meeting history and conversation profile'}
+                        {result.snippet || t('searchPersonSnippet')}
                       </span>
                     </span>
                     {result.meetingCount != null && (
@@ -273,7 +278,7 @@ export default function GlobalSearchDialog() {
             {people.length > 0 && records.length > 0 && <CommandSeparator className="mx-3 my-2 bg-[var(--af-border)]" />}
             {records.length > 0 && (
               <CommandGroup
-                heading="Meetings, transcripts & summaries"
+                heading={t('searchGroupRecords')}
                 className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-[var(--af-text-3)]"
               >
                 {records.map(renderRecord)}
@@ -284,9 +289,9 @@ export default function GlobalSearchDialog() {
       </CommandList>
 
       <div className="flex items-center gap-4 border-t border-[var(--af-border)] px-4 py-2 text-[10px] text-[var(--af-text-3)]">
-        <span><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">Arrows</kbd> navigate</span>
-        <span><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">Enter</kbd> open</span>
-        <span className="ml-auto"><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">Esc</kbd> close</span>
+        <span><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">{t('searchKeyArrows')}</kbd> {t('searchHintNavigate')}</span>
+        <span><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">{t('searchKeyEnter')}</kbd> {t('searchHintOpen')}</span>
+        <span className="ml-auto"><kbd className="mr-1 rounded border border-[var(--af-border-strong)] bg-[var(--af-panel-2)] px-1.5 py-0.5">{t('searchKeyEsc')}</kbd> {t('searchHintClose')}</span>
       </div>
     </CommandDialog>
   );

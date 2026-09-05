@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Download, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -22,6 +23,7 @@ interface UpdateDialogProps {
 }
 
 export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogProps) {
+  const t = useTranslations('dialogs');
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,11 +43,11 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
         if (updateResult?.available) {
           setUpdate(updateResult);
         } else {
-          setError('Update no longer available');
+          setError(t('updateNoLongerAvailable'));
         }
       }).catch((err) => {
         console.error('Failed to get update object:', err);
-        setError('Failed to prepare update: ' + (err.message || 'Unknown error'));
+        setError(t('updatePrepareFailed', { error: err.message || t('updateUnknownError') }));
       });
     } else {
       // Reset state when dialog closes
@@ -67,11 +69,11 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
           updateToUse = updateResult;
           setUpdate(updateResult);
         } else {
-          setError('Update not available');
+          setError(t('updateNotAvailable'));
           return;
         }
       } catch (err: any) {
-        setError('Failed to get update: ' + (err.message || 'Unknown error'));
+        setError(t('updateGetFailed', { error: err.message || t('updateUnknownError') }));
         return;
       }
     }
@@ -134,7 +136,7 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
       await updateToUse.install();
 
       console.log('[UpdateDialog] Update installed successfully');
-      toast.success('Update installed successfully. The app will restart...');
+      toast.success(t('updateInstalled'));
 
       // Mark download as complete before closing
       setIsDownloading(false);
@@ -152,10 +154,10 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
         });
       }
       console.error('Update failed:', err);
-      setError(err.message || 'Failed to download or install update');
+      setError(err.message || t('updateDownloadInstallFailed'));
       setIsDownloading(false);
       setPhase('idle');
-      toast.error('Update failed: ' + (err.message || 'Unknown error'));
+      toast.error(t('updateFailed', { error: err.message || t('updateUnknownError') }));
     }
   };
 
@@ -211,34 +213,34 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
                 <span className="flex h-9 w-9 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/10">
                   <Loader2 className="h-5 w-5 animate-spin text-cyan-300" />
                 </span>
-                {phase === 'installing' ? 'Installing Update' : 'Downloading Update'}
+                {phase === 'installing' ? t('updateTitleInstalling') : t('updateTitleDownloading')}
               </>
             ) : error ? (
               <>
                 <span className="flex h-9 w-9 items-center justify-center rounded-full border border-red-400/25 bg-red-400/10">
                   <AlertCircle className="h-5 w-5 text-red-300" />
                 </span>
-                Update Error
+                {t('updateTitleError')}
               </>
             ) : (
               <>
                 <span className="flex h-9 w-9 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/10">
                   <Download className="h-5 w-5 text-cyan-300" />
                 </span>
-                Update Available
+                {t('updateTitleAvailable')}
               </>
             )}
           </DialogTitle>
           <DialogDescription className="pl-12 text-slate-400">
             {isDownloading
               ? phase === 'installing'
-                ? 'Download complete. Verifying and installing the update.'
+                ? t('updateDescInstalling')
                 : phase === 'preparing'
-                  ? 'Preparing the secure download...'
-                  : 'Downloading the signed update package from GitHub.'
+                  ? t('updateDescPreparing')
+                  : t('updateDownloading')
               : error
-              ? 'An error occurred while updating'
-              : `A new version (${updateInfo.version}) is available`}
+              ? t('updateDescError')
+              : t('updateDescAvailable', { version: updateInfo.version ?? '' })}
           </DialogDescription>
         </DialogHeader>
         </div>
@@ -248,16 +250,16 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
             <>
               <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Installed</span>
+                  <span className="text-slate-500">{t('updateInstalledLabel')}</span>
                   <span className="font-mono font-medium text-slate-300">v{updateInfo.currentVersion}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Available</span>
+                  <span className="text-slate-500">{t('updateAvailableLabel')}</span>
                   <span className="font-mono font-semibold text-cyan-300">v{updateInfo.version}</span>
                 </div>
                 {updateInfo.date && (
                   <div className="col-span-2 flex justify-between border-t border-slate-800 pt-3 text-sm">
-                    <span className="text-slate-500">Released</span>
+                    <span className="text-slate-500">{t('updateReleasedLabel')}</span>
                     <span className="font-medium text-slate-300">{formatDate(updateInfo.date)}</span>
                   </div>
                 )}
@@ -283,7 +285,7 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
                   />
                 </div>
                 <div className="mt-2 flex justify-between font-mono text-xs text-slate-400">
-                  <span>{phase === 'installing' ? 'Installing' : `${Math.round(progress.percentage)}%`}</span>
+                  <span>{phase === 'installing' ? t('updateInstallingShort') : `${Math.round(progress.percentage)}%`}</span>
                   {progress.total > 0 && (
                     <span>
                       {formatBytes(progress.downloaded)} / {formatBytes(progress.total)}
@@ -308,17 +310,17 @@ export function UpdateDialog({ open, onOpenChange, updateInfo }: UpdateDialogPro
           {!isDownloading && !error && (
             <>
               <Button variant="outline" className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white" onClick={() => handleOpenChange(false)}>
-                Later
+                {t('updateLater')}
               </Button>
               <Button onClick={handleDownloadAndInstall} className="bg-teal-500 text-slate-950 hover:bg-teal-400">
                 <Download className="h-4 w-4 mr-2" />
-                Download & Install
+                {t('updateDownloadAndInstall')}
               </Button>
             </>
           )}
           {error && (
             <Button variant="outline" className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white" onClick={() => handleOpenChange(false)}>
-              Close
+              {t('updateClose')}
             </Button>
           )}
         </DialogFooter>
