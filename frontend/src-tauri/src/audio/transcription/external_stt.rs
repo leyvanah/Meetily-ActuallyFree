@@ -494,6 +494,126 @@ mod tests {
         );
     }
 
+    /// Minimal HTTP/1.1 server that answers each request from `answers` in
+    /// order, so the request path can be exercised without a real service.
+    async fn spawn_stub(
+        answers: Vec<(u16, &'static str)>,
+    ) -> (String, tokio::task::JoinHandle<Vec<u8>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/asr", listener.local_addr().unwrap());
+
+        let handle = tokio::spawn(async move {
+            let mut first_request = Vec::new();
+            for (index, (status, body)) in answers.into_iter().enumerate() {
+                let (mut socket, _) = listener.accept().await.unwrap();
+
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 4096];
+                loop {
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    request.extend_from_slice(&buffer[..read]);
+                    if read == 0 || request_is_complete(&request) {
+                        break;
+                    }
+                }
+                if index == 0 {
+                    first_request = request;
+                }
+
+                let response = format!(
+                    "HTTP/1.1 {} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    status,
+                    body.len(),
+                    body
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+                let _ = socket.shutdown().await;
+            }
+            first_request
+        });
+
+        (url, handle)
+    }
+
+    /// Headers received and the body is as long as Content-Length promised.
+    fn request_is_complete(request: &[u8]) -> bool {
+        let text = String::from_utf8_lossy(request);
+        let Some(header_end) = text.find("\r\n\r\n") else {
+            return false;
+        };
+        let content_length = text[..header_end]
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())?
+            })
+            .unwrap_or(0);
+        request.len() >= header_end + 4 + content_length
+    }
+
+    #[tokio::test]
+    async fn audio_is_posted_and_the_answer_is_read_back() {
+        let (url, served) = spawn_stub(vec![(200, r#"{"text":"это тест"}"#)]).await;
+
+        let config = ExternalSttConfig {
+            url,
+            ..ExternalSttConfig::default()
+        };
+        let provider = ExternalSttProvider::new(config).unwrap();
+        let result = provider
+            .transcribe(vec![0.1f32; 16_000], Some("ru".to_string()))
+            .await
+            .unwrap();
+
+        assert_eq!(result.text, "это тест");
+        let request = served.await.unwrap();
+        let request = String::from_utf8_lossy(&request);
+        assert!(request.starts_with("POST /asr "));
+        assert!(request.contains("multipart/form-data"));
+        assert!(request.contains("name=\"file\""));
+        assert!(request.contains("name=\"language\""));
+        assert!(request.contains("RIFF"));
+    }
+
+    #[tokio::test]
+    async fn a_failing_service_is_retried_and_then_succeeds() {
+        let (url, _served) =
+            spawn_stub(vec![(503, "busy"), (200, r#"{"text":"после сбоя"}"#)]).await;
+
+        let config = ExternalSttConfig {
+            url,
+            max_retries: 2,
+            ..ExternalSttConfig::default()
+        };
+        let provider = ExternalSttProvider::new(config).unwrap();
+        let text = provider
+            .transcribe_wav(encode_wav_pcm16(&[0.1f32; 16_000], 16_000), None)
+            .await
+            .unwrap();
+
+        assert_eq!(text, "после сбоя");
+    }
+
+    #[tokio::test]
+    async fn a_client_error_is_reported_without_retrying() {
+        let (url, _served) = spawn_stub(vec![(400, "bad request")]).await;
+
+        let config = ExternalSttConfig {
+            url,
+            ..ExternalSttConfig::default()
+        };
+        let provider = ExternalSttProvider::new(config).unwrap();
+        let error = provider
+            .transcribe_wav(encode_wav_pcm16(&[0.1f32; 16_000], 16_000), None)
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("400"), "unexpected message: {}", error);
+    }
+
     #[test]
     fn empty_and_non_http_urls_are_rejected() {
         let mut config = ExternalSttConfig::default();

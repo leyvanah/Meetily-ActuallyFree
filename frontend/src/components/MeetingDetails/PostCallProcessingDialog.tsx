@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dialog';
 import type { RawModelInfo } from '@/hooks/useTranscriptionModels';
 import { isVisibleParakeetModel } from '@/lib/parakeet';
+import { externalSttLabel, type ExternalSttConfig } from '@/components/ExternalSttSettings';
 
 type Stage = 'idle' | 'prompt' | 'enhancing' | 'diarizing' | 'refreshing' | 'error';
 type FailedStage = 'enhancing' | 'diarizing' | 'pre-diarization-refresh' | 'post-diarization-refresh';
@@ -52,7 +53,7 @@ interface RetranscriptionError {
 }
 
 interface ModelChoice {
-  provider: 'whisper' | 'parakeet';
+  provider: 'whisper' | 'parakeet' | 'externalStt';
   name: string;
 }
 
@@ -77,9 +78,20 @@ async function resolveEnhancementModel(
       .filter((model) => model.status === 'Available' && isVisibleParakeetModel(model.name))
       .map((model) => ({ provider: 'parakeet' as const, name: model.name })),
   ];
+  // The external service has no downloaded model, but it can enhance too
+  const externalConfig = await invoke<ExternalSttConfig>('api_get_external_stt_config')
+    .catch(() => null);
+  if (externalConfig?.url.trim()) {
+    available.push({ provider: 'externalStt' as const, name: externalSttLabel(externalConfig) });
+  }
   const normalizedProvider = configuredProvider === 'localWhisper'
     ? 'whisper'
     : configuredProvider;
+  if (normalizedProvider === 'externalStt') {
+    const external = available.find((model) => model.provider === 'externalStt');
+    if (external) return external;
+    throw new Error('The external speech service is not configured for enhancement.');
+  }
   const configured = available.find(
     (model) => model.provider === normalizedProvider && model.name === configuredModel,
   );

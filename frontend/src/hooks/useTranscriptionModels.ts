@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isVisibleParakeetModel } from '@/lib/parakeet';
+import { externalSttLabel, type ExternalSttConfig } from '@/components/ExternalSttSettings';
 
 export interface RawModelInfo {
   name: string;
@@ -9,7 +10,7 @@ export interface RawModelInfo {
 }
 
 export interface ModelOption {
-  provider: 'whisper' | 'parakeet';
+  provider: 'whisper' | 'parakeet' | 'externalStt';
   name: string;
   displayName: string;
   size_mb: number;
@@ -82,6 +83,22 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     } catch (err) {
       console.error('Failed to fetch Parakeet models:', err);
       setHasParakeetModel(false);
+    }
+
+    // Offer the external speech service too, when the owner configured one
+    try {
+      const externalConfig = await invoke<ExternalSttConfig>('api_get_external_stt_config');
+      if (externalConfig.url.trim()) {
+        const label = externalSttLabel(externalConfig);
+        allModels.push({
+          provider: 'externalStt' as const,
+          name: label,
+          displayName: `🌐 ${label}`,
+          size_mb: 0,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch external STT config:', err);
     }
 
     setAvailableModels(allModels);
