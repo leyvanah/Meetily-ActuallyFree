@@ -6,6 +6,7 @@ use realfft::RealFftPlanner;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use nnnoiseless::DenoiseState;
 
@@ -109,43 +110,102 @@ pub fn normalize_v2(audio: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// True peak limiter with lookahead buffer (prevents clipping)
+/// True peak limiter: holds the signal back by a lookahead window and rides one
+/// smooth gain over it, so a loud transient is ducked as a whole.
+///
+/// The previous version scaled single samples that crossed the limit and left
+/// their neighbours untouched, which is clipping by another name - it flattened
+/// the tips of plosives and consonants and sprayed high-frequency hash across
+/// the recording. That was audible as crackle and cost the transcription words.
 struct TruePeakLimiter {
-    lookahead_samples: usize,
+    /// Delay line holding the samples not yet released.
     buffer: Vec<f32>,
-    gain_reduction: Vec<f32>,
-    current_position: usize,
+    write_position: usize,
+    /// Loudest magnitude still inside the lookahead window, kept as a
+    /// decreasing run of (sample index, magnitude) so the front is always the
+    /// answer. Reading it off a plain scan of the delay line instead cost 144
+    /// comparisons for every one of 48000 samples a second - inside the
+    /// capture callback, where whatever does not finish in time is audio the
+    /// device drops.
+    peaks: VecDeque<(u64, f32)>,
+    samples_seen: u64,
+    /// Gain currently applied, moving towards `target_gain`.
+    gain: f32,
+    /// How fast the gain may fall (per sample) when a peak arrives.
+    attack_coefficient: f32,
+    /// How fast it returns to unity once the peak has passed.
+    release_coefficient: f32,
 }
 
 impl TruePeakLimiter {
     fn new(sample_rate: u32) -> Self {
-        const LIMITER_LOOKAHEAD_MS: usize = 10;
-        let lookahead_samples = ((sample_rate as usize * LIMITER_LOOKAHEAD_MS) / 1000).max(1);
+        // Long enough to see a transient coming, short enough to stay live
+        const LOOKAHEAD_MS: f32 = 3.0;
+        // Reaching the needed reduction within the lookahead avoids overshoot
+        const ATTACK_MS: f32 = 1.0;
+        // Slow enough that speech does not pump between syllables
+        const RELEASE_MS: f32 = 80.0;
+
+        let lookahead_samples = ((sample_rate as f32 * LOOKAHEAD_MS / 1000.0) as usize).max(1);
+        let per_sample = |ms: f32| 1.0 - (-1.0 / (sample_rate as f32 * ms / 1000.0)).exp();
 
         Self {
-            lookahead_samples,
             buffer: vec![0.0; lookahead_samples],
-            gain_reduction: vec![1.0; lookahead_samples],
-            current_position: 0,
+            write_position: 0,
+            peaks: VecDeque::with_capacity(lookahead_samples),
+            samples_seen: 0,
+            gain: 1.0,
+            attack_coefficient: per_sample(ATTACK_MS),
+            release_coefficient: per_sample(RELEASE_MS),
         }
     }
 
     fn process(&mut self, sample: f32, true_peak_limit: f32) -> f32 {
-        self.buffer[self.current_position] = sample;
+        // The incoming sample enters the delay line; the one leaving it is what
+        // we emit, so the gain has already reacted to what is coming.
+        let delayed = self.buffer[self.write_position];
+        self.buffer[self.write_position] = sample;
+        self.write_position = (self.write_position + 1) % self.buffer.len();
 
-        let sample_abs = sample.abs();
-        if sample_abs > true_peak_limit {
-            let reduction = true_peak_limit / sample_abs;
-            self.gain_reduction[self.current_position] = reduction;
-        } else {
-            self.gain_reduction[self.current_position] = 1.0;
+        // Loudest sample still inside the lookahead window decides the target.
+        // Anything smaller than the arriving sample can never be the loudest
+        // again, so it is dropped; what remains decreases from the front, and
+        // the front leaves once it has aged out of the window.
+        let magnitude = sample.abs();
+        while self
+            .peaks
+            .back()
+            .is_some_and(|&(_, loudest)| loudest <= magnitude)
+        {
+            self.peaks.pop_back();
         }
+        self.peaks.push_back((self.samples_seen, magnitude));
+        let window = self.buffer.len() as u64;
+        while self
+            .peaks
+            .front()
+            .is_some_and(|&(index, _)| index + window <= self.samples_seen)
+        {
+            self.peaks.pop_front();
+        }
+        self.samples_seen += 1;
+        let peak = self.peaks.front().map_or(0.0, |&(_, loudest)| loudest);
 
-        let output_position = (self.current_position + 1) % self.lookahead_samples;
-        let output_sample = self.buffer[output_position] * self.gain_reduction[output_position];
+        let target_gain = if peak > true_peak_limit {
+            true_peak_limit / peak
+        } else {
+            1.0
+        };
 
-        self.current_position = output_position;
-        output_sample
+        let coefficient = if target_gain < self.gain {
+            self.attack_coefficient
+        } else {
+            self.release_coefficient
+        };
+        self.gain += (target_gain - self.gain) * coefficient;
+
+        // The gain envelope is smooth, but never let a sample through the ceiling
+        (delayed * self.gain).clamp(-true_peak_limit, true_peak_limit)
     }
 }
 
@@ -175,7 +235,11 @@ impl LoudnessNormalizer {
         const TRUE_PEAK_LIMIT: f64 = -1.0;
         const ANALYZE_CHUNK_SIZE: usize = 512;
 
-        let ebur128 = ebur128::EbuR128::new(channels, sample_rate, ebur128::Mode::I | ebur128::Mode::TRUE_PEAK)
+        // Integrated loudness only. Asking for TRUE_PEAK as well ran a
+        // four-times oversampling interpolator over every sample to find
+        // inter-sample peaks - inside the capture callback, for a number
+        // nothing ever read: the ceiling is held by `TruePeakLimiter` below.
+        let ebur128 = ebur128::EbuR128::new(channels, sample_rate, ebur128::Mode::I)
             .map_err(|e| anyhow::anyhow!("Failed to create EBU R128 normalizer: {}", e))?;
 
         let true_peak_limit = 10_f32.powf(TRUE_PEAK_LIMIT as f32 / 20.0);
@@ -248,6 +312,192 @@ impl LoudnessNormalizer {
 #[cfg(test)]
 mod loudness_normalizer_tests {
     use super::*;
+
+    /// This chain runs inside the capture callback. Whatever it cannot finish
+    /// before the device hands over the next block is audio the device drops -
+    /// silently, upstream of every counter the app keeps. So it has to stay
+    /// far ahead of real time, and in the unoptimized build too, because that
+    /// is the build the app is developed and tested against.
+    #[test]
+    fn the_microphone_chain_keeps_far_ahead_of_the_device() {
+        let sample_rate = 48_000u32;
+        let seconds = 30;
+        let samples: Vec<f32> = (0..sample_rate as usize * seconds)
+            .map(|n| {
+                let t = n as f32 / sample_rate as f32;
+                // Speech-like: a moving formant with syllable-rate amplitude
+                (t * 220.0 * std::f32::consts::TAU).sin()
+                    * (0.3 + 0.3 * (t * 4.0 * std::f32::consts::TAU).sin())
+            })
+            .collect();
+
+        let mut filter = HighPassFilter::new(sample_rate, 80.0);
+        let mut normalizer = LoudnessNormalizer::new(1, sample_rate).expect("normalizer");
+        let block = sample_rate as usize / 100; // 10 ms, as the device delivers
+
+        // Timed a second at a time, because the cost must not grow with the
+        // length of the recording either: a chain that keeps up for the first
+        // minute and falls behind by the thirtieth loses the end of a session.
+        let mut processed = 0usize;
+        let mut per_second = Vec::with_capacity(seconds);
+        for second in samples.chunks(sample_rate as usize) {
+            let started = std::time::Instant::now();
+            for chunk in second.chunks(block) {
+                let filtered = filter.process(chunk);
+                processed += normalizer.normalize_loudness(&filtered, 1.0).len();
+            }
+            per_second.push(started.elapsed().as_secs_f64());
+        }
+
+        let elapsed: f64 = per_second.iter().sum();
+        let realtime_factor = seconds as f64 / elapsed;
+        let first = per_second[0];
+        let last = per_second[per_second.len() - 1];
+
+        assert_eq!(processed, samples.len(), "the chain changed the sample count");
+        println!(
+            "microphone chain: {}s of audio in {:.3}s = {:.1}x real time \
+             (first second {:.1} ms, last second {:.1} ms)",
+            seconds,
+            elapsed,
+            realtime_factor,
+            first * 1000.0,
+            last * 1000.0
+        );
+        assert!(
+            realtime_factor > 20.0,
+            "the microphone chain runs at only {:.1}x real time; the capture \
+             callback will fall behind the device and lose audio",
+            realtime_factor
+        );
+        assert!(
+            last < first * 2.0,
+            "the microphone chain slows down as the recording goes on: \
+             {:.1} ms for the first second, {:.1} ms for the last",
+            first * 1000.0,
+            last * 1000.0
+        );
+    }
+
+    /// Runs a real recording through the microphone chain (high-pass filter and
+    /// loudness normaliser) so its effect can be measured on its own:
+    ///   CHAIN_IN=<in.wav> CHAIN_OUT=<out.wav> cargo test --lib audio_processing -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs CHAIN_IN and CHAIN_OUT"]
+    fn passes_a_recording_through_the_microphone_chain() {
+        let input = std::env::var("CHAIN_IN").expect("CHAIN_IN");
+        let output = std::env::var("CHAIN_OUT").expect("CHAIN_OUT");
+        let (samples, sample_rate) =
+            crate::diarization::dsp::read_wav(std::path::Path::new(&input)).expect("read wav");
+
+        let mut filter = HighPassFilter::new(sample_rate, 80.0);
+        let mut normalizer = LoudnessNormalizer::new(1, sample_rate).expect("normalizer");
+
+        // The capture callback hands over small blocks, so feed it the same way
+        let block = sample_rate as usize / 100; // 10 ms
+        let mut processed = Vec::with_capacity(samples.len());
+        for chunk in samples.chunks(block) {
+            let filtered = filter.process(chunk);
+            processed.extend(normalizer.normalize_loudness(&filtered, 1.0));
+        }
+
+        let mut bytes = Vec::with_capacity(44 + processed.len() * 2);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&((36 + processed.len() * 2) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&((processed.len() * 2) as u32).to_le_bytes());
+        for sample in &processed {
+            bytes.extend_from_slice(&((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).to_le_bytes());
+        }
+        std::fs::write(&output, bytes).expect("write wav");
+        println!("wrote {} samples to {}", processed.len(), output);
+    }
+
+    /// Energy above 4 kHz, the band where clipping hash shows up.
+    fn high_frequency_share(samples: &[f32]) -> f32 {
+        let mut previous = 0.0f32;
+        let mut difference_energy = 0.0f32;
+        let mut total_energy = 0.0f32;
+        for &sample in samples {
+            difference_energy += (sample - previous) * (sample - previous);
+            total_energy += sample * sample;
+            previous = sample;
+        }
+        if total_energy <= f32::EPSILON {
+            0.0
+        } else {
+            difference_energy / total_energy
+        }
+    }
+
+    /// Speech with transients that overshoot the ceiling, like a plosive.
+    fn signal_with_peaks(sample_rate: u32, limit: f32) -> Vec<f32> {
+        (0..sample_rate as usize)
+            .map(|i| {
+                let t = i as f32 / sample_rate as f32;
+                let tone = (2.0 * std::f32::consts::PI * 220.0 * t).sin() * limit * 0.8;
+                // Four short bursts well above the ceiling
+                let burst = if (i / (sample_rate as usize / 8)) % 2 == 0 { 2.2 } else { 1.0 };
+                tone * burst
+            })
+            .collect()
+    }
+
+    #[test]
+    fn limiter_holds_the_ceiling_without_clipping_the_waveform() {
+        let sample_rate = 48_000;
+        let limit = 10_f32.powf(-1.0 / 20.0);
+        let input = signal_with_peaks(sample_rate, limit);
+
+        let mut limiter = TruePeakLimiter::new(sample_rate);
+        let output: Vec<f32> = input
+            .iter()
+            .map(|&sample| limiter.process(sample, limit))
+            .collect();
+
+        // Nothing may exceed the ceiling
+        let peak = output.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        assert!(peak <= limit + 1e-6, "limiter let {} through a ceiling of {}", peak, limit);
+
+        // ...and the result must stay smooth. Per-sample clipping roughly doubled
+        // the high-frequency share; riding a gain envelope leaves it alone.
+        let before = high_frequency_share(&input);
+        let after = high_frequency_share(&output);
+        assert!(
+            after < before * 1.3,
+            "limiting added high-frequency hash: {:.5} -> {:.5}",
+            before,
+            after
+        );
+    }
+
+    #[test]
+    fn quiet_audio_passes_through_untouched() {
+        let sample_rate = 48_000;
+        let limit = 10_f32.powf(-1.0 / 20.0);
+        let mut limiter = TruePeakLimiter::new(sample_rate);
+
+        let input: Vec<f32> = (0..sample_rate as usize)
+            .map(|i| 0.1 * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / sample_rate as f32).sin())
+            .collect();
+        let output: Vec<f32> = input.iter().map(|&s| limiter.process(s, limit)).collect();
+
+        // Same waveform, only delayed by the lookahead
+        let delay = (sample_rate as f32 * 3.0 / 1000.0) as usize;
+        let error = input[..input.len() - delay]
+            .iter()
+            .zip(&output[delay..])
+            .fold(0.0f32, |worst, (a, b)| worst.max((a - b).abs()));
+        assert!(error < 1e-3, "quiet audio was altered by {}", error);
+    }
 
     #[test]
     fn meeting_names_remove_concat_sensitive_apostrophes() {

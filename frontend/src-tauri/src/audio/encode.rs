@@ -15,10 +15,46 @@ pub struct AudioInput {
     pub device: Arc<AudioDevice>,
 }
 
+/// The delivery format: AAC-LC in MP4, playable everywhere the app shows audio.
+/// Lossy, so it is only ever written once, over the finished recording.
+pub const MP4_AAC_OUTPUT_ARGS: [&str; 8] = [
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k", // Increased from 64k for better audio quality (especially for speech)
+    "-profile:a",
+    "aac_low", // Use AAC-LC profile for better compatibility
+    "-movflags",
+    "+faststart", // Optimize for web streaming
+];
+
+/// The format for pieces that will later be joined into one recording.
+///
+/// FLAC because the join has to be seamless. A lossy codec pads every file it
+/// writes out to a whole frame and prepends its own encoder delay, and joining
+/// such files leaves that padding inside the recording: a few tens of
+/// milliseconds of dead air at every seam, in the middle of whatever was being
+/// said. FLAC stores the exact sample count, so the pieces meet with nothing
+/// added between them.
+pub const FLAC_OUTPUT_ARGS: [&str; 4] = ["-c:a", "flac", "-sample_fmt", "s16"];
+
+/// Encode raw interleaved `f32` samples into the delivery format.
 pub fn encode_single_audio(
     data: &[u8],
     sample_rate: u32,
     channels: u16,
+    output_path: &PathBuf,
+) -> anyhow::Result<()> {
+    encode_raw_audio(data, sample_rate, channels, &MP4_AAC_OUTPUT_ARGS, "mp4", output_path)
+}
+
+/// Encode raw interleaved `f32` samples with the given output codec arguments.
+pub fn encode_raw_audio(
+    data: &[u8],
+    sample_rate: u32,
+    channels: u16,
+    output_args: &[&str],
+    format: &str,
     output_path: &PathBuf,
 ) -> anyhow::Result<()> {
     debug!("Starting FFmpeg process for {} bytes of audio data", data.len());
@@ -47,18 +83,9 @@ pub fn encode_single_audio(
             &channels.to_string(),
             "-i",
             "pipe:0",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k", // Increased from 64k for better audio quality (especially for speech)
-            "-profile:a",
-            "aac_low", // Use AAC-LC profile for better compatibility
-            "-movflags",
-            "+faststart", // Optimize for web streaming
-            "-f",
-            "mp4",
-            output_path,
         ])
+        .args(output_args)
+        .args(["-f", format, output_path])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

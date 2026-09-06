@@ -450,11 +450,17 @@ impl RecordingSaver {
             }
         }
 
-        let final_audio_path = finalize_track(&self.mixed_saver, "audio (mixed)", true)
-            .await?
+        // The three tracks are independent encodes of the same length, so run
+        // them together: the owner waits for one, not for three in a row.
+        let (final_audio_path, mic_audio_path, system_audio_path) = tokio::join!(
+            finalize_track(&self.mixed_saver, "audio (mixed)", true),
+            finalize_track(&self.mic_saver, "mic", false),
+            finalize_track(&self.system_saver, "system", false),
+        );
+        let final_audio_path = final_audio_path?
             .ok_or_else(|| "Mixed audio path missing".to_string())?;
-        let mic_audio_path = finalize_track(&self.mic_saver, "mic", false).await?;
-        let system_audio_path = finalize_track(&self.system_saver, "system", false).await?;
+        let mic_audio_path = mic_audio_path?;
+        let system_audio_path = system_audio_path?;
 
         // Save final transcripts.json with validation
         if let Some(folder) = &self.meeting_folder {

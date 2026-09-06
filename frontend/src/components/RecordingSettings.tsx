@@ -18,6 +18,12 @@ export interface RecordingPreferences {
   mic_gain?: number;
   /** System-audio gain before metering, transcription, and recording (0.5–3.0). */
   system_gain?: number;
+  /** Cancel the speakers' echo out of the microphone channel. */
+  echo_cancellation?: boolean;
+  /** Drop microphone text that only repeats a recent system phrase. */
+  echo_text_filter?: boolean;
+  /** One conversation partner: microphone is you, the speakers are them. */
+  single_remote_speaker?: boolean;
 }
 
 interface RecordingSettingsProps {
@@ -35,6 +41,9 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
     preferred_system_device: null,
     mic_gain: 1.0,
     system_gain: 1.0,
+    echo_cancellation: true,
+    echo_text_filter: false,
+    single_remote_speaker: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -88,6 +97,24 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
     await Analytics.track('auto_save_recording_toggled', {
       enabled: enabled.toString()
     });
+  };
+
+  const handleEchoCancellationToggle = async (enabled: boolean) => {
+    const newPreferences = { ...preferences, echo_cancellation: enabled };
+    setPreferences(newPreferences);
+    await savePreferences(newPreferences);
+  };
+
+  const handleSingleRemoteSpeakerToggle = async (enabled: boolean) => {
+    const newPreferences = { ...preferences, single_remote_speaker: enabled };
+    setPreferences(newPreferences);
+    await savePreferences(newPreferences);
+  };
+
+  const handleEchoTextFilterToggle = async (enabled: boolean) => {
+    const newPreferences = { ...preferences, echo_text_filter: enabled };
+    setPreferences(newPreferences);
+    await savePreferences(newPreferences);
   };
 
   const handleMicGainChange = async (value: number) => {
@@ -225,6 +252,54 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
         <Switch
           checked={preferences.auto_save}
           onCheckedChange={handleAutoSaveToggle}
+          disabled={saving}
+          className="shrink-0"
+        />
+      </div>
+
+      {/* One-to-one: trust the channels instead of clustering voices */}
+      <div className="flex min-w-0 items-start justify-between gap-3 rounded-lg border p-4 sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{t('singleRemoteSpeakerTitle')}</div>
+          <div className="text-sm text-gray-600">
+            {t('singleRemoteSpeakerDescription')}
+          </div>
+        </div>
+        <Switch
+          checked={preferences.single_remote_speaker !== false}
+          onCheckedChange={handleSingleRemoteSpeakerToggle}
+          disabled={saving}
+          className="shrink-0"
+        />
+      </div>
+
+      {/* Echo cancellation — keep the speakers out of the mic channel */}
+      <div className="flex min-w-0 items-start justify-between gap-3 rounded-lg border p-4 sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{t('echoCancellationTitle')}</div>
+          <div className="text-sm text-gray-600">
+            {t('echoCancellationDescription')}
+          </div>
+        </div>
+        <Switch
+          checked={preferences.echo_cancellation !== false}
+          onCheckedChange={handleEchoCancellationToggle}
+          disabled={saving}
+          className="shrink-0"
+        />
+      </div>
+
+      {/* Text-level echo fallback — only for setups the canceller cannot serve */}
+      <div className="flex min-w-0 items-start justify-between gap-3 rounded-lg border p-4 sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{t('echoTextFilterTitle')}</div>
+          <div className="text-sm text-gray-600">
+            {t('echoTextFilterDescription')}
+          </div>
+        </div>
+        <Switch
+          checked={preferences.echo_text_filter === true}
+          onCheckedChange={handleEchoTextFilterToggle}
           disabled={saving}
           className="shrink-0"
         />

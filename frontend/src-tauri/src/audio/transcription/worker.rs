@@ -40,6 +40,8 @@ static SPEECH_DETECTED_EMITTED: AtomicBool = AtomicBool::new(false);
 
 /// Reset the speech detected flag for a new recording session
 pub fn reset_speech_detected_flag() {
+    // A fresh recording starts with no history of what the other side said
+    crate::audio::echo_filter::reset();
     SPEECH_DETECTED_EMITTED.store(false, Ordering::SeqCst);
     info!("🔍 SPEECH_DETECTED_EMITTED reset to: {}", SPEECH_DETECTED_EMITTED.load(Ordering::SeqCst));
 }
@@ -180,6 +182,7 @@ pub fn start_transcription_task<R: Runtime>(
 
                             let chunk_timestamp = chunk.timestamp;
                             let chunk_duration = chunk.data.len() as f64 / chunk.sample_rate as f64;
+                            let device_type = chunk.device_type.clone();
 
                             // Speaker label for this segment.
                             //
@@ -189,15 +192,27 @@ pub fn start_transcription_task<R: Runtime>(
                             // display name). System audio is remote parties →
                             // diarize into Speaker N when models are available.
                             crate::audio::common::mark_stt_activity();
+                            //
+                            // In a one-to-one conversation the two capture
+                            // channels already separate the speakers perfectly,
+                            // and clustering the remote channel by voice only
+                            // invents extra people - so skip it entirely there.
+                            let one_to_one =
+                                crate::audio::recording_preferences::single_remote_speaker();
                             let chunk_source = match &chunk.device_type {
                                 crate::audio::recording_state::DeviceType::Microphone => {
-                                    // Still feed the online diarizer so it learns the
-                                    // user's voice embedding for later offline refine.
-                                    let _ = crate::diarization::online::assign_speaker(
-                                        &chunk.data,
-                                        true,
-                                    );
+                                    if !one_to_one {
+                                        // Feed the online diarizer so it learns the
+                                        // user's voice embedding for later offline refine.
+                                        let _ = crate::diarization::online::assign_speaker(
+                                            &chunk.data,
+                                            true,
+                                        );
+                                    }
                                     "You".to_string()
+                                }
+                                crate::audio::recording_state::DeviceType::System if one_to_one => {
+                                    "Speaker 1".to_string()
                                 }
                                 crate::audio::recording_state::DeviceType::System => {
                                     match crate::diarization::online::assign_speaker(
@@ -259,10 +274,41 @@ pub fn start_transcription_task<R: Runtime>(
                                             info!("🔍 Speech already detected in this session, not re-emitting");
                                         }
 
-                                        // Generate sequence ID and calculate timestamps FIRST
-                                        let sequence_id = SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
                                         let audio_start_time = chunk_timestamp; // Already in seconds from recording start
                                         let audio_end_time = chunk_timestamp + chunk_duration;
+
+                                        // Fallback echo handling for setups the acoustic
+                                        // canceller cannot serve: remember what the system
+                                        // channel said, and drop a mic segment that only
+                                        // repeats it. Off unless the owner asks for it.
+                                        let is_system = matches!(
+                                            device_type,
+                                            crate::audio::recording_state::DeviceType::System
+                                        );
+                                        if is_system {
+                                            crate::audio::echo_filter::note_system_text(
+                                                audio_start_time,
+                                                audio_end_time,
+                                                &transcript,
+                                            );
+                                        } else if crate::audio::recording_preferences::echo_text_filter()
+                                            && crate::audio::echo_filter::is_echo_of_recent_system(
+                                                audio_start_time,
+                                                audio_end_time,
+                                                &transcript,
+                                            )
+                                        {
+                                            info!(
+                                                "🔇 Worker {} dropped a microphone segment that repeats the system channel: '{}'",
+                                                worker_id, transcript
+                                            );
+                                            chunks_completed_clone.fetch_add(1, Ordering::SeqCst);
+                                            continue;
+                                        }
+
+                                        // Sequence ids order the transcript in the UI, so only
+                                        // claim one for a segment that is actually emitted
+                                        let sequence_id = SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
                                         // Save structured transcript segment to recording manager (only final results)
                                         // Save ALL segments (partial and final) to ensure complete JSON

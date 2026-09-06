@@ -5,7 +5,7 @@ use sqlx::{
 use std::fs;
 use std::path::Path;
 
-static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+pub(crate) static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 const PEOPLE_MIGRATION_VERSION: i64 = 20260811000000;
 const PEOPLE_MIGRATION_LF_CHECKSUM: &str =
@@ -358,6 +358,54 @@ impl DatabaseManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Migrations released before the convention below; their checksums are
+    /// already out in the wild with platform-specific line endings.
+    const HISTORICAL_MIGRATIONS: [&str; 10] = [
+        "20250916100000_initial_schema.sql",
+        "20250920155811_add_openrouter_api_key.sql",
+        "20251006000000_add_audio_sync_fields.sql",
+        "20251010153942_add_ollama_endpoint.sql",
+        "20251101000000_add_summary_backup.sql",
+        "20251105120000_add_pro_license_custom_openai.sql",
+        "20251110000000_add_grace_period_to_licensing.sql",
+        "20251110000001_add_speaker_field.sql",
+        "20251223000000_add_meeting_notes.sql",
+        "20251229000000_add_gemini_api_key.sql",
+    ];
+
+    /// sqlx checksums the text of each migration, so a checkout that rewrites
+    /// line endings makes an applied migration look modified and the app then
+    /// refuses to open its database. Every new migration must therefore be
+    /// pinned to LF in .gitattributes - this catches the omission here rather
+    /// than in a build that has already reached someone's machine.
+    #[test]
+    fn every_new_migration_is_pinned_to_lf_endings() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let attributes = std::fs::read_to_string(root.join("../../.gitattributes"))
+            .expect("repository .gitattributes");
+
+        let mut unpinned = Vec::new();
+        for entry in std::fs::read_dir(root.join("migrations")).expect("migrations directory") {
+            let entry = entry.expect("migration entry");
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".sql") || HISTORICAL_MIGRATIONS.contains(&name.as_str()) {
+                continue;
+            }
+            let pinned = attributes.lines().any(|line| {
+                line.contains(&name) && line.contains("eol=lf") && !line.trim_start().starts_with('#')
+            });
+            if !pinned {
+                unpinned.push(name);
+            }
+        }
+
+        assert!(
+            unpinned.is_empty(),
+            "these migrations are not pinned to LF in .gitattributes: {:?}",
+            unpinned
+        );
+    }
 
     #[tokio::test]
     async fn repairs_known_people_migration_line_ending_checksum() {

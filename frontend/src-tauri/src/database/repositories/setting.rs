@@ -252,6 +252,8 @@ impl SettingsRepository {
         let api_key_column = match provider {
             "localWhisper" => "whisperApiKey",
             "parakeet" => return Ok(()), // Parakeet doesn't need an API key, return early
+            // GigaAM runs locally, like Parakeet
+            "gigaam" => return Ok(()),
             // The external STT service keeps its token inside externalSttConfig
             "externalStt" => return Ok(()),
             "deepgram" => "deepgramApiKey",
@@ -286,6 +288,8 @@ impl SettingsRepository {
         let api_key_column = match provider {
             "localWhisper" => "whisperApiKey",
             "parakeet" => return Ok(None), // Parakeet doesn't need an API key
+            // GigaAM runs locally, like Parakeet
+            "gigaam" => return Ok(None),
             // The external STT service keeps its token inside externalSttConfig
             "externalStt" => return Ok(None),
             "deepgram" => "deepgramApiKey",
@@ -420,5 +424,70 @@ impl SettingsRepository {
         .await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every provider the settings screen can store for live transcription.
+    const LIVE_TRANSCRIPT_PROVIDERS: [&str; 4] =
+        ["localWhisper", "parakeet", "gigaam", "externalStt"];
+
+    async fn migrated_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+        crate::database::manager::MIGRATOR
+            .run(&pool)
+            .await
+            .expect("migrations");
+        pool
+    }
+
+    /// Reading the transcript config asks for the provider's API key, so a
+    /// provider missing from that lookup makes the whole config unreadable and
+    /// the app silently falls back to another engine.
+    #[tokio::test]
+    async fn every_live_provider_can_be_saved_and_read_back() {
+        let pool = migrated_pool().await;
+
+        for provider in LIVE_TRANSCRIPT_PROVIDERS {
+            SettingsRepository::save_transcript_config(&pool, provider, "some-model")
+                .await
+                .unwrap_or_else(|error| panic!("saving '{}' failed: {}", provider, error));
+
+            let config = SettingsRepository::get_transcript_config(&pool)
+                .await
+                .unwrap_or_else(|error| panic!("reading back '{}' failed: {}", provider, error))
+                .unwrap_or_else(|| panic!("no config stored for '{}'", provider));
+            assert_eq!(config.provider, provider);
+
+            SettingsRepository::get_transcript_api_key(&pool, provider)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("no API key lookup for '{}': {}", provider, error)
+                });
+        }
+    }
+
+    /// The locally running engines never carry a key, so storing one is a no-op
+    /// rather than an error.
+    #[tokio::test]
+    async fn local_engines_ignore_api_keys() {
+        let pool = migrated_pool().await;
+
+        for provider in ["parakeet", "gigaam", "externalStt"] {
+            SettingsRepository::save_transcript_api_key(&pool, provider, "ignored")
+                .await
+                .unwrap_or_else(|error| panic!("saving a key for '{}' failed: {}", provider, error));
+            assert_eq!(
+                SettingsRepository::get_transcript_api_key(&pool, provider)
+                    .await
+                    .expect("key lookup"),
+                None
+            );
+        }
     }
 }

@@ -1,15 +1,87 @@
 use std::path::PathBuf;
 use anyhow::{Result, anyhow};
 use log::{info, warn, error};
-use super::encode::encode_single_audio;
+use super::encode::{encode_raw_audio, FLAC_OUTPUT_ARGS, MP4_AAC_OUTPUT_ARGS};
 use super::recording_state::AudioChunk;
 use serde::{Serialize, Deserialize};
 
 use super::ffmpeg::find_ffmpeg_path;
 
+/// Extension of the pieces a recording is written in while it runs.
+/// See `FLAC_OUTPUT_ARGS` for why it is not the delivery format.
+const CHECKPOINT_EXT: &str = "flac";
+
+/// Extensions a checkpoint directory may hold. Recordings interrupted by an
+/// older build left `.mp4` pieces behind, and recovery still has to join them.
+const CHECKPOINT_EXTS: [&str; 2] = [CHECKPOINT_EXT, "mp4"];
+
+fn is_checkpoint_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| CHECKPOINT_EXTS.contains(&ext))
+}
+
 fn ffconcat_file_line(path: &std::path::Path) -> String {
     let escaped = path.to_string_lossy().replace('\'', "'\\''");
     format!("file '{}'\n", escaped)
+}
+
+/// Join the checkpoint pieces into one delivery file.
+///
+/// The pieces are decoded and the result encoded **once**, over the whole
+/// recording. Copying the pieces instead would be faster, but it would also
+/// carry each piece's codec padding into the middle of the recording; that is
+/// the audible hitch every 30 seconds this avoids.
+fn concat_checkpoints(files: &[PathBuf], list_file: &PathBuf, output: &PathBuf) -> Result<()> {
+    let mut list_content = String::new();
+    for path in files {
+        let abs_path = path
+            .canonicalize()
+            .map_err(|e| anyhow!("Failed to canonicalize {}: {e}", path.display()))?;
+        list_content.push_str(&ffconcat_file_line(&abs_path));
+    }
+    std::fs::write(list_file, list_content)?;
+
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| anyhow!("FFmpeg not found. Please install FFmpeg to finalize recordings."))?;
+    info!("Using FFmpeg at: {:?}", ffmpeg_path);
+
+    let mut command = std::process::Command::new(ffmpeg_path);
+    command
+        .args([
+            "-f",
+            "concat", // Use concat demuxer
+            "-safe",
+            "0", // Allow absolute paths
+            "-i",
+            list_file.to_str().ok_or_else(|| anyhow!("Invalid checkpoint list path"))?,
+        ])
+        .args(MP4_AAC_OUTPUT_ARGS)
+        .args([
+            "-f",
+            "mp4",
+            "-y", // Overwrite output file
+            output.to_str().ok_or_else(|| anyhow!("Invalid output path"))?,
+        ]);
+
+    // Hide console window on Windows to prevent CMD popup during finalization
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let ffmpeg_output = command.output()?;
+    if !ffmpeg_output.status.success() {
+        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr);
+        error!("FFmpeg merge failed: {}", stderr);
+        return Err(anyhow!("FFmpeg concat failed: {}", stderr));
+    }
+    if !output.exists() {
+        return Err(anyhow!("Merged audio file was not created: {}", output.display()));
+    }
+    Ok(())
 }
 
 /// Audio data for one track
@@ -108,14 +180,18 @@ impl IncrementalAudioSaver {
         }
 
         // Generate checkpoint filename
-        let checkpoint_path = self.checkpoints_dir
-            .join(format!("{}_chunk_{:03}.mp4", self.track, self.checkpoint_count));
+        let checkpoint_path = self.checkpoints_dir.join(format!(
+            "{}_chunk_{:03}.{CHECKPOINT_EXT}",
+            self.track, self.checkpoint_count
+        ));
 
         // Encode and save checkpoint
-        encode_single_audio(
+        encode_raw_audio(
             bytemuck::cast_slice(&audio_data),
             self.sample_rate,
             1,  // mono
+            &FLAC_OUTPUT_ARGS,
+            CHECKPOINT_EXT,
             &checkpoint_path
         )?;
 
@@ -180,69 +256,33 @@ impl IncrementalAudioSaver {
         Ok(final_audio_path)
     }
 
-    /// Merge all checkpoint files into final audio.mp4 using FFmpeg concat
-    /// Uses concat demuxer for fast merging without re-encoding
+    /// Merge all checkpoint files into the final `{track}.mp4`
     async fn merge_checkpoints(&self, output: &PathBuf) -> Result<()> {
         info!("Merging {} checkpoints into final audio file...", self.checkpoint_count);
 
-        // Create concat list file for FFmpeg
-        let list_file = self.checkpoints_dir.join("concat_list.txt");
-        let mut list_content = String::new();
-
+        let mut checkpoint_files = Vec::with_capacity(self.checkpoint_count as usize);
         for i in 0..self.checkpoint_count {
-            let checkpoint_path = self.checkpoints_dir
-                .join(format!("{}_chunk_{:03}.mp4", self.track, i));
+            let checkpoint_path = self.checkpoints_dir.join(format!(
+                "{}_chunk_{:03}.{CHECKPOINT_EXT}",
+                self.track, i
+            ));
 
             // Verify checkpoint exists
             if !checkpoint_path.exists() {
                 return Err(anyhow!("Checkpoint file missing: {}", checkpoint_path.display()));
             }
-
-            // Use absolute path for FFmpeg (required for safe mode)
-            let abs_path = checkpoint_path.canonicalize()?;
-            list_content.push_str(&ffconcat_file_line(&abs_path));
+            checkpoint_files.push(checkpoint_path);
         }
 
-        std::fs::write(&list_file, list_content)?;
-
-        let ffmpeg_path = find_ffmpeg_path()
-            .ok_or_else(|| anyhow!("FFmpeg not found. Please install FFmpeg to finalize recordings."))?;
-        info!("Using FFmpeg at: {:?}", ffmpeg_path);
-
-        // Run FFmpeg concat command
-        // Using concat demuxer with copy codec for fast merging (no re-encoding)
-        
-        let mut command = std::process::Command::new(ffmpeg_path);
-        
-        command.args(&[
-            "-f", "concat",          // Use concat demuxer
-            "-safe", "0",            // Allow absolute paths
-            "-i", list_file.to_str().unwrap(),
-            "-c", "copy",            // Copy codec - no re-encoding!
-            "-y",                    // Overwrite output file
-            output.to_str().unwrap()
-        ]);
-
-        // Hide console window on Windows to prevent CMD popup during finalization
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
-
-        let ffmpeg_output = command.output()?;
-
-        if !ffmpeg_output.status.success() {
-            let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr);
-            error!("FFmpeg merge failed: {}", stderr);
-            return Err(anyhow!("FFmpeg concat failed: {}", stderr));
-        }
-
-        // Verify output file was created
-        if !output.exists() {
-            return Err(anyhow!("Merged audio file was not created: {}", output.display()));
-        }
+        let list_file = self.checkpoints_dir.join("concat_list.txt");
+        // Encoding a whole recording keeps a core busy for a while; off the
+        // runtime's threads so the other tracks can be merged at the same time.
+        let output_path = output.clone();
+        tokio::task::spawn_blocking(move || {
+            concat_checkpoints(&checkpoint_files, &list_file, &output_path)
+        })
+        .await
+        .map_err(|e| anyhow!("Merge task failed: {e}"))??;
 
         info!("Successfully merged {} checkpoints → {}",
               self.checkpoint_count, output.display());
@@ -281,7 +321,7 @@ fn recover_checkpoint_track(
     let mut checkpoint_files: Vec<PathBuf> = std::fs::read_dir(checkpoints_dir)
         .map_err(|e| format!("Failed to read {}: {e}", checkpoints_dir.display()))?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("mp4"))
+        .filter(|path| is_checkpoint_file(path))
         .collect();
     checkpoint_files.sort();
     if checkpoint_files.is_empty() {
@@ -299,52 +339,11 @@ fn recover_checkpoint_track(
     }
 
     let concat_file = checkpoints_dir.join("concat_list.txt");
-    let mut concat_content = String::new();
-    for path in &checkpoint_files {
-        let path = path
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize {}: {e}", path.display()))?;
-        concat_content.push_str(&ffconcat_file_line(&path));
-    }
-    std::fs::write(&concat_file, concat_content)
-        .map_err(|e| format!("Failed to write {}: {e}", concat_file.display()))?;
-
-    let ffmpeg = find_ffmpeg_path()
-        .ok_or_else(|| "FFmpeg not found. Please install FFmpeg to recover audio.".to_string())?;
     let temp_output = output_path.with_extension("mp4.recovering");
     let _ = std::fs::remove_file(&temp_output);
-    let mut command = std::process::Command::new(ffmpeg);
-    command.args([
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        concat_file.to_str().ok_or("Invalid checkpoint path")?,
-        "-c",
-        "copy",
-        "-y",
-        temp_output.to_str().ok_or("Invalid output path")?,
-    ]);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-
-    let output = command
-        .output()
-        .map_err(|e| format!("Failed to run FFmpeg: {e}"))?;
-    if !output.status.success() {
+    if let Err(error) = concat_checkpoints(&checkpoint_files, &concat_file, &temp_output) {
         let _ = std::fs::remove_file(&temp_output);
-        return Err(format!(
-            "FFmpeg failed for {}: {}",
-            output_path.display(),
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    if !temp_output.is_file() {
-        return Err(format!("FFmpeg did not create {}", temp_output.display()));
+        return Err(format!("Failed to merge {}: {error}", output_path.display()));
     }
     if output_path.exists() {
         std::fs::remove_file(output_path)
@@ -474,7 +473,7 @@ pub async fn cleanup_checkpoints(meeting_folder: String) -> Result<(), String> {
 }
 
 /// Check if a meeting folder has audio checkpoint files
-/// Returns true if .checkpoints/ directory exists and contains .mp4 files
+/// Returns true if .checkpoints/ directory exists and contains checkpoint pieces
 #[tauri::command]
 pub async fn has_audio_checkpoints(meeting_folder: String) -> Result<bool, String> {
     let folder_path = PathBuf::from(&meeting_folder);
@@ -490,15 +489,13 @@ pub async fn has_audio_checkpoints(meeting_folder: String) -> Result<bool, Strin
         return Ok(false);
     }
 
-    // Scan for .mp4 checkpoint files
-    let has_mp4_files = std::fs::read_dir(&checkpoints_dir)
+    // Scan for checkpoint pieces
+    let has_checkpoint_files = std::fs::read_dir(&checkpoints_dir)
         .map_err(|e| format!("Failed to read checkpoints directory: {}", e))?
         .filter_map(|entry| entry.ok())
-        .any(|entry| {
-            entry.path().extension().and_then(|s| s.to_str()) == Some("mp4")
-        });
+        .any(|entry| is_checkpoint_file(&entry.path()));
 
-    Ok(has_mp4_files)
+    Ok(has_checkpoint_files)
 }
 
 #[cfg(test)]
@@ -547,6 +544,69 @@ mod tests {
 
         // Verify checkpoints directory deleted
         assert!(!meeting_folder.join(".checkpoints").exists());
+    }
+
+    /// Checkpoint boundaries must leave no trace in the finished recording.
+    /// Joining encoded pieces by copying used to insert each piece's codec
+    /// padding — tens of milliseconds of dead air every 30 seconds, mid-word.
+    #[tokio::test]
+    async fn merged_checkpoints_do_not_add_audio_at_the_seams() {
+        let temp_dir = tempdir().unwrap();
+        let meeting_folder = temp_dir.path().join("Seam_Test");
+        std::fs::create_dir_all(&meeting_folder).unwrap();
+
+        let sample_rate = 48_000u32;
+        let mut saver =
+            IncrementalAudioSaver::new_track(meeting_folder.clone(), sample_rate, "audio").unwrap();
+
+        // Two full checkpoints of a continuous tone, so a seam falls mid-signal.
+        let total_samples = sample_rate as usize * 60;
+        let block = 24_000usize;
+        for i in 0..(total_samples / block) {
+            let data = (0..block)
+                .map(|n| {
+                    let t = (i * block + n) as f32 / sample_rate as f32;
+                    (t * 440.0 * std::f32::consts::TAU).sin() * 0.25
+                })
+                .collect();
+            saver
+                .add_chunk(AudioChunk {
+                    data,
+                    sample_rate,
+                    timestamp: (i * block) as f64 / sample_rate as f64,
+                    chunk_id: i as u64,
+                    device_type: DeviceType::Mixed,
+                })
+                .unwrap();
+        }
+        assert_eq!(saver.checkpoint_count, 2, "expected a seam to test");
+
+        let final_path = saver.finalize().await.unwrap();
+        let joined = super::super::decoder::decode_audio_file(&final_path).unwrap();
+
+        // Compare against the same signal encoded in one piece: the delivery
+        // codec's own delay and end padding are then common to both, and any
+        // difference is what the seam added.
+        let tone: Vec<f32> = (0..total_samples)
+            .map(|n| (n as f32 / sample_rate as f32 * 440.0 * std::f32::consts::TAU).sin() * 0.25)
+            .collect();
+        let one_piece = meeting_folder.join("one_piece.mp4");
+        super::super::encode::encode_single_audio(
+            bytemuck::cast_slice(&tone),
+            sample_rate,
+            1,
+            &one_piece,
+        )
+        .unwrap();
+        let reference = super::super::decoder::decode_audio_file(&one_piece).unwrap();
+
+        let added = joined.samples.len() as i64 - reference.samples.len() as i64;
+        assert_eq!(
+            added, 0,
+            "the seam added {added} samples ({:.1} ms) to a {:.0} second recording",
+            added as f64 / sample_rate as f64 * 1000.0,
+            total_samples as f64 / sample_rate as f64
+        );
     }
 
     #[tokio::test]
