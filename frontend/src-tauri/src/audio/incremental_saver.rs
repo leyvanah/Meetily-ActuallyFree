@@ -275,7 +275,14 @@ impl IncrementalAudioSaver {
         }
 
         let list_file = self.checkpoints_dir.join("concat_list.txt");
-        concat_checkpoints(&checkpoint_files, &list_file, output)?;
+        // Encoding a whole recording keeps a core busy for a while; off the
+        // runtime's threads so the other tracks can be merged at the same time.
+        let output_path = output.clone();
+        tokio::task::spawn_blocking(move || {
+            concat_checkpoints(&checkpoint_files, &list_file, &output_path)
+        })
+        .await
+        .map_err(|e| anyhow!("Merge task failed: {e}"))??;
 
         info!("Successfully merged {} checkpoints → {}",
               self.checkpoint_count, output.display());
