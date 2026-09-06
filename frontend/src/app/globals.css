@@ -560,6 +560,15 @@ html.dark.minibar-window body {
    otherwise clash with the monochrome AMOLED palette. */
 .amoled .hover\:bg-gray-200:hover { background-color: var(--af-hover) !important; }
 .amoled .text-blue-800 { color: var(--af-text-2) !important; }
+
+/* The .dark rule above repaints every bg-blue-600 button with the accent,
+   which is white here - so a label written as text-white (and the icons
+   inheriting it) turns invisible. Flip anything on that surface to the
+   contrast colour instead. */
+.amoled .bg-blue-600,
+.amoled .bg-blue-600 * {
+  color: var(--af-accent-contrast) !important;
+}
 .amoled .bg-blue-600:hover, .amoled .hover\:bg-blue-700:hover { background-color: #d6d6d6 !important; }
 
 .amoled :focus-visible {
