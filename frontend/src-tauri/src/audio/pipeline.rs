@@ -429,6 +429,13 @@ pub struct AudioCapture {
     sample_rate: u32,        // Original device sample rate
     channels: u16,
     chunk_counter: Arc<std::sync::atomic::AtomicU64>,
+    /// Samples this source has already handed on. The stream is continuous, so
+    /// counting it is an exact clock - unlike the wall clock read inside the
+    /// callback, which is late by however long the thread waited.
+    emitted_samples: Arc<std::sync::atomic::AtomicU64>,
+    /// Where this source's first sample sits on the recording timeline, so a
+    /// channel that starts late still lines up with the other one.
+    stream_origin_seconds: Arc<std::sync::Mutex<Option<f64>>>,
     device_type: DeviceType,
     recording_sender: Option<mpsc::UnboundedSender<AudioChunk>>,
     needs_resampling: bool,  // Flag if resampling is required
@@ -620,6 +627,8 @@ impl AudioCapture {
             sample_rate,
             channels,
             chunk_counter: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            emitted_samples: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            stream_origin_seconds: Arc::new(std::sync::Mutex::new(None)),
             device_type,
             recording_sender,
             needs_resampling,
@@ -878,8 +887,28 @@ impl AudioCapture {
         //     }
         // }
 
-        // Use global recording timestamp for proper synchronization
-        let timestamp = self.state.get_active_recording_duration().unwrap_or(0.0);
+        // Position this block by counting the samples this source has produced.
+        // The wall clock is only consulted once, to learn where this stream's
+        // first sample belongs relative to the other channel; after that the
+        // sample count carries the timeline, so a late callback can no longer
+        // look like a gap in the audio.
+        let output_rate = if self.needs_resampling {
+            48_000
+        } else {
+            self.sample_rate
+        } as f64;
+        let emitted = self
+            .emitted_samples
+            .fetch_add(mono_data.len() as u64, std::sync::atomic::Ordering::SeqCst);
+        let origin = {
+            let mut origin = self.stream_origin_seconds.lock().unwrap_or_else(|e| e.into_inner());
+            *origin.get_or_insert_with(|| {
+                let now = self.state.get_active_recording_duration().unwrap_or(0.0);
+                (now - mono_data.len() as f64 / output_rate).max(0.0)
+            })
+        };
+        // The ring buffer reads this as the end of the block
+        let timestamp = origin + (emitted + mono_data.len() as u64) as f64 / output_rate;
 
         if self.state.is_audio_source_muted(&self.device_type) {
             mono_data.fill(0.0);
