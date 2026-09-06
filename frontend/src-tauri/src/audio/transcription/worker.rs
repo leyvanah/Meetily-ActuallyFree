@@ -262,8 +262,6 @@ pub fn start_transcription_task<R: Runtime>(
                                             info!("🔍 Speech already detected in this session, not re-emitting");
                                         }
 
-                                        // Generate sequence ID and calculate timestamps FIRST
-                                        let sequence_id = SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
                                         let audio_start_time = chunk_timestamp; // Already in seconds from recording start
                                         let audio_end_time = chunk_timestamp + chunk_duration;
 
@@ -295,6 +293,10 @@ pub fn start_transcription_task<R: Runtime>(
                                             chunks_completed_clone.fetch_add(1, Ordering::SeqCst);
                                             continue;
                                         }
+
+                                        // Sequence ids order the transcript in the UI, so only
+                                        // claim one for a segment that is actually emitted
+                                        let sequence_id = SEQUENCE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
                                         // Save structured transcript segment to recording manager (only final results)
                                         // Save ALL segments (partial and final) to ensure complete JSON
