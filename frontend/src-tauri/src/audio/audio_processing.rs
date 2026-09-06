@@ -109,43 +109,73 @@ pub fn normalize_v2(audio: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// True peak limiter with lookahead buffer (prevents clipping)
+/// True peak limiter: holds the signal back by a lookahead window and rides one
+/// smooth gain over it, so a loud transient is ducked as a whole.
+///
+/// The previous version scaled single samples that crossed the limit and left
+/// their neighbours untouched, which is clipping by another name - it flattened
+/// the tips of plosives and consonants and sprayed high-frequency hash across
+/// the recording. That was audible as crackle and cost the transcription words.
 struct TruePeakLimiter {
-    lookahead_samples: usize,
+    /// Delay line holding the samples not yet released.
     buffer: Vec<f32>,
-    gain_reduction: Vec<f32>,
-    current_position: usize,
+    write_position: usize,
+    /// Gain currently applied, moving towards `target_gain`.
+    gain: f32,
+    /// How fast the gain may fall (per sample) when a peak arrives.
+    attack_coefficient: f32,
+    /// How fast it returns to unity once the peak has passed.
+    release_coefficient: f32,
 }
 
 impl TruePeakLimiter {
     fn new(sample_rate: u32) -> Self {
-        const LIMITER_LOOKAHEAD_MS: usize = 10;
-        let lookahead_samples = ((sample_rate as usize * LIMITER_LOOKAHEAD_MS) / 1000).max(1);
+        // Long enough to see a transient coming, short enough to stay live
+        const LOOKAHEAD_MS: f32 = 3.0;
+        // Reaching the needed reduction within the lookahead avoids overshoot
+        const ATTACK_MS: f32 = 1.0;
+        // Slow enough that speech does not pump between syllables
+        const RELEASE_MS: f32 = 80.0;
+
+        let lookahead_samples = ((sample_rate as f32 * LOOKAHEAD_MS / 1000.0) as usize).max(1);
+        let per_sample = |ms: f32| 1.0 - (-1.0 / (sample_rate as f32 * ms / 1000.0)).exp();
 
         Self {
-            lookahead_samples,
             buffer: vec![0.0; lookahead_samples],
-            gain_reduction: vec![1.0; lookahead_samples],
-            current_position: 0,
+            write_position: 0,
+            gain: 1.0,
+            attack_coefficient: per_sample(ATTACK_MS),
+            release_coefficient: per_sample(RELEASE_MS),
         }
     }
 
     fn process(&mut self, sample: f32, true_peak_limit: f32) -> f32 {
-        self.buffer[self.current_position] = sample;
+        // The incoming sample enters the delay line; the one leaving it is what
+        // we emit, so the gain has already reacted to what is coming.
+        let delayed = self.buffer[self.write_position];
+        self.buffer[self.write_position] = sample;
+        self.write_position = (self.write_position + 1) % self.buffer.len();
 
-        let sample_abs = sample.abs();
-        if sample_abs > true_peak_limit {
-            let reduction = true_peak_limit / sample_abs;
-            self.gain_reduction[self.current_position] = reduction;
+        // Loudest sample still inside the lookahead window decides the target
+        let peak = self
+            .buffer
+            .iter()
+            .fold(0.0f32, |loudest, value| loudest.max(value.abs()));
+        let target_gain = if peak > true_peak_limit {
+            true_peak_limit / peak
         } else {
-            self.gain_reduction[self.current_position] = 1.0;
-        }
+            1.0
+        };
 
-        let output_position = (self.current_position + 1) % self.lookahead_samples;
-        let output_sample = self.buffer[output_position] * self.gain_reduction[output_position];
+        let coefficient = if target_gain < self.gain {
+            self.attack_coefficient
+        } else {
+            self.release_coefficient
+        };
+        self.gain += (target_gain - self.gain) * coefficient;
 
-        self.current_position = output_position;
-        output_sample
+        // The gain envelope is smooth, but never let a sample through the ceiling
+        (delayed * self.gain).clamp(-true_peak_limit, true_peak_limit)
     }
 }
 
@@ -248,6 +278,84 @@ impl LoudnessNormalizer {
 #[cfg(test)]
 mod loudness_normalizer_tests {
     use super::*;
+
+    /// Energy above 4 kHz, the band where clipping hash shows up.
+    fn high_frequency_share(samples: &[f32]) -> f32 {
+        let mut previous = 0.0f32;
+        let mut difference_energy = 0.0f32;
+        let mut total_energy = 0.0f32;
+        for &sample in samples {
+            difference_energy += (sample - previous) * (sample - previous);
+            total_energy += sample * sample;
+            previous = sample;
+        }
+        if total_energy <= f32::EPSILON {
+            0.0
+        } else {
+            difference_energy / total_energy
+        }
+    }
+
+    /// Speech with transients that overshoot the ceiling, like a plosive.
+    fn signal_with_peaks(sample_rate: u32, limit: f32) -> Vec<f32> {
+        (0..sample_rate as usize)
+            .map(|i| {
+                let t = i as f32 / sample_rate as f32;
+                let tone = (2.0 * std::f32::consts::PI * 220.0 * t).sin() * limit * 0.8;
+                // Four short bursts well above the ceiling
+                let burst = if (i / (sample_rate as usize / 8)) % 2 == 0 { 2.2 } else { 1.0 };
+                tone * burst
+            })
+            .collect()
+    }
+
+    #[test]
+    fn limiter_holds_the_ceiling_without_clipping_the_waveform() {
+        let sample_rate = 48_000;
+        let limit = 10_f32.powf(-1.0 / 20.0);
+        let input = signal_with_peaks(sample_rate, limit);
+
+        let mut limiter = TruePeakLimiter::new(sample_rate);
+        let output: Vec<f32> = input
+            .iter()
+            .map(|&sample| limiter.process(sample, limit))
+            .collect();
+
+        // Nothing may exceed the ceiling
+        let peak = output.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        assert!(peak <= limit + 1e-6, "limiter let {} through a ceiling of {}", peak, limit);
+
+        // ...and the result must stay smooth. Per-sample clipping roughly doubled
+        // the high-frequency share; riding a gain envelope leaves it alone.
+        let before = high_frequency_share(&input);
+        let after = high_frequency_share(&output);
+        assert!(
+            after < before * 1.3,
+            "limiting added high-frequency hash: {:.5} -> {:.5}",
+            before,
+            after
+        );
+    }
+
+    #[test]
+    fn quiet_audio_passes_through_untouched() {
+        let sample_rate = 48_000;
+        let limit = 10_f32.powf(-1.0 / 20.0);
+        let mut limiter = TruePeakLimiter::new(sample_rate);
+
+        let input: Vec<f32> = (0..sample_rate as usize)
+            .map(|i| 0.1 * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / sample_rate as f32).sin())
+            .collect();
+        let output: Vec<f32> = input.iter().map(|&s| limiter.process(s, limit)).collect();
+
+        // Same waveform, only delayed by the lookahead
+        let delay = (sample_rate as f32 * 3.0 / 1000.0) as usize;
+        let error = input[..input.len() - delay]
+            .iter()
+            .zip(&output[delay..])
+            .fold(0.0f32, |worst, (a, b)| worst.max((a - b).abs()));
+        assert!(error < 1e-3, "quiet audio was altered by {}", error);
+    }
 
     #[test]
     fn meeting_names_remove_concat_sensitive_apostrophes() {
