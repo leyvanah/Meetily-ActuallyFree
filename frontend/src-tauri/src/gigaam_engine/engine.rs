@@ -476,6 +476,43 @@ mod tests {
         assert_eq!(std::fs::read(&vocab).expect("read vocab"), content);
     }
 
+    /// The path the app actually takes: point the engine at a model directory,
+    /// load it and transcribe. Opt-in, needs the model and a 16 kHz wav:
+    ///   GIGAAM_MODEL_DIR=<dir> GIGAAM_TEST_WAV=<file.wav> \
+    ///     cargo test --lib gigaam -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "needs GIGAAM_MODEL_DIR and GIGAAM_TEST_WAV"]
+    async fn the_engine_loads_the_model_and_transcribes() {
+        let source = std::path::PathBuf::from(
+            std::env::var("GIGAAM_MODEL_DIR").expect("GIGAAM_MODEL_DIR"),
+        );
+        let wav = std::env::var("GIGAAM_TEST_WAV").expect("GIGAAM_TEST_WAV");
+
+        // The engine appends "gigaam" to the models directory, so seed it there
+        let temp = tempfile::tempdir().expect("temp dir");
+        let engine =
+            GigaamEngine::new_with_models_dir(Some(temp.path().to_path_buf())).expect("engine");
+        for (name, _) in MODEL_FILES {
+            std::fs::copy(source.join(name), engine.model_dir().join(name)).expect("seed file");
+        }
+
+        assert!(engine.status().await.installed);
+        engine.load_model().await.expect("load model");
+        assert!(engine.is_model_loaded().await);
+        assert_eq!(engine.get_current_model().await.as_deref(), Some(MODEL_NAME));
+
+        let (samples, sample_rate) =
+            crate::diarization::dsp::read_wav(std::path::Path::new(&wav)).expect("read wav");
+        assert_eq!(sample_rate, 16_000, "the test wav must be 16 kHz mono");
+
+        let text = engine.transcribe_audio(samples).await.expect("transcribe");
+        println!("engine text: {}", text);
+        assert!(!text.trim().is_empty(), "expected some text");
+
+        assert!(engine.unload_model().await);
+        assert!(!engine.is_model_loaded().await);
+    }
+
     #[tokio::test]
     async fn a_truncated_file_is_reported_as_partial() {
         let temp = tempfile::tempdir().expect("temp dir");
