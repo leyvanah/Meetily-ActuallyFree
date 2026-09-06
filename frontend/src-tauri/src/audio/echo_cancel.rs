@@ -338,13 +338,32 @@ mod tests {
         let (samples, sample_rate) =
             crate::diarization::dsp::read_wav(std::path::Path::new(&input)).expect("read wav");
 
+        // Optional far-end track, so the suppressor can be exercised the way a
+        // live call drives it rather than against pure silence.
+        let far_end = std::env::var("AEC_FAR").ok().map(|path| {
+            crate::diarization::dsp::read_wav(std::path::Path::new(&path))
+                .expect("read far-end wav")
+                .0
+        });
+
         let mut canceller = EchoCanceller::new(sample_rate).expect("canceller");
         let window = sample_rate as usize * 50 / 1000;
         let silence = vec![0.0f32; window];
         let mut cleaned = Vec::with_capacity(samples.len());
-        for chunk in samples.chunks(window) {
-            let reference = &silence[..chunk.len()];
-            cleaned.extend(canceller.process(chunk, reference));
+        for (index, chunk) in samples.chunks(window).enumerate() {
+            let reference: Vec<f32> = match far_end.as_ref() {
+                Some(far) => {
+                    let start = index * window;
+                    let mut block = vec![0.0f32; chunk.len()];
+                    if start < far.len() {
+                        let count = (far.len() - start).min(chunk.len());
+                        block[..count].copy_from_slice(&far[start..start + count]);
+                    }
+                    block
+                }
+                None => silence[..chunk.len()].to_vec(),
+            };
+            cleaned.extend(canceller.process(chunk, &reference));
         }
 
         // 16-bit PCM so the comparison script can read it back

@@ -80,6 +80,12 @@ struct AudioMixerRingBuffer {
     sample_rate: f64,
     timeline_origin: Option<f64>,
     output_samples: usize,
+    /// Diagnostics: how often the assembled audio was not simply the stream as
+    /// captured. Any of these being non-zero means the recording has seams.
+    padded_mic_windows: u64,
+    padded_system_windows: u64,
+    dropped_samples: u64,
+    realigned_chunks: u64,
 }
 
 impl AudioMixerRingBuffer {
@@ -119,6 +125,10 @@ impl AudioMixerRingBuffer {
             sample_rate: sample_rate as f64,
             timeline_origin: None,
             output_samples: 0,
+            padded_mic_windows: 0,
+            padded_system_windows: 0,
+            dropped_samples: 0,
+            realigned_chunks: 0,
         }
     }
 
@@ -188,8 +198,10 @@ impl AudioMixerRingBuffer {
         // late and has to line up with the other one.
         let tolerance = (self.sample_rate * TIMELINE_JITTER_TOLERANCE_SECONDS) as usize;
         if chunk_start > buffered_end + tolerance {
+            self.realigned_chunks += 1;
             buffer.extend(std::iter::repeat(0.0).take(chunk_start - buffered_end));
         } else if chunk_start + tolerance < buffered_end {
+            self.realigned_chunks += 1;
             let overlap = buffered_end - chunk_start;
             if overlap >= samples.len() {
                 return discontinuity_start;
@@ -217,9 +229,11 @@ impl AudioMixerRingBuffer {
         // Safety: prevent buffer overflow (keep only last 200ms)
         while self.mic_buffer.len() > self.max_buffer_size {
             self.mic_buffer.pop_front();
+            self.dropped_samples += 1;
         }
         while self.system_buffer.len() > self.max_buffer_size {
             self.system_buffer.pop_front();
+            self.dropped_samples += 1;
         }
         discontinuity_start
     }
@@ -246,6 +260,7 @@ impl AudioMixerRingBuffer {
             // Enough mic data - drain window
             self.mic_buffer.drain(0..self.window_size_samples).collect()
         } else if !self.mic_buffer.is_empty() {
+            self.padded_mic_windows += 1;
             // Some mic data but not enough - consume all + pad with zeros
             let available: Vec<f32> = self.mic_buffer.drain(..).collect();
             let mut padded = Vec::with_capacity(self.window_size_samples);
@@ -268,6 +283,7 @@ impl AudioMixerRingBuffer {
                 .drain(0..self.window_size_samples)
                 .collect()
         } else if !self.system_buffer.is_empty() {
+            self.padded_system_windows += 1;
             // Some system data but not enough - consume all + pad with zeros
             let available: Vec<f32> = self.system_buffer.drain(..).collect();
             let mut padded = Vec::with_capacity(self.window_size_samples);
@@ -285,6 +301,17 @@ impl AudioMixerRingBuffer {
 
         self.output_samples += self.window_size_samples;
         Some((mic_window, sys_window))
+    }
+
+    /// Everything that made the saved audio differ from the captured stream.
+    fn seam_report(&self) -> String {
+        format!(
+            "mic windows padded: {}, system windows padded: {}, samples dropped: {}, chunks realigned: {}",
+            self.padded_mic_windows,
+            self.padded_system_windows,
+            self.dropped_samples,
+            self.realigned_chunks
+        )
     }
 
     fn extract_remaining(&mut self) -> Option<(Vec<f32>, Vec<f32>)> {
@@ -1386,6 +1413,10 @@ impl AudioPipeline {
         // Flush any remaining VAD segments
         self.flush_remaining_audio()?;
 
+        info!(
+            "🧵 Capture seams for this recording - {}",
+            self.ring_buffer.seam_report()
+        );
         info!("VAD-driven audio pipeline ended");
         Ok(())
     }
