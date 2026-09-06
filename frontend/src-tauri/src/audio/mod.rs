@@ -2,6 +2,7 @@
 pub mod audio_processing;
 pub mod decoder;
 pub mod echo_cancel;
+pub mod echo_filter;
 pub mod encode;
 pub mod ffmpeg;
 pub mod vad;

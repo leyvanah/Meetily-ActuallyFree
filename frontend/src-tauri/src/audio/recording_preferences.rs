@@ -39,6 +39,8 @@ static MIC_GAIN_BITS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(1.0f32.to_bi
 static SYSTEM_GAIN_BITS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(1.0f32.to_bits()));
 /// Whether the speakers' echo is cancelled out of the microphone channel.
 static ECHO_CANCELLATION: AtomicBool = AtomicBool::new(true);
+/// Whether a microphone segment that only repeats the system channel is dropped.
+static ECHO_TEXT_FILTER: AtomicBool = AtomicBool::new(false);
 
 /// Current mic gain multiplier (0.5–3.0). Applied after mic loudness normalize.
 pub fn mic_gain() -> f32 {
@@ -66,6 +68,15 @@ pub fn echo_cancellation() -> bool {
 fn set_echo_cancellation_runtime(enabled: bool) {
     ECHO_CANCELLATION.store(enabled, Ordering::Relaxed);
 }
+
+/// Whether to drop microphone text that repeats a recent system phrase.
+pub fn echo_text_filter() -> bool {
+    ECHO_TEXT_FILTER.load(Ordering::Relaxed)
+}
+
+fn set_echo_text_filter_runtime(enabled: bool) {
+    ECHO_TEXT_FILTER.store(enabled, Ordering::Relaxed);
+}
 #[cfg(target_os = "macos")]
 use log::error;
 
@@ -91,6 +102,10 @@ pub struct RecordingPreferences {
     /// Only has an effect while both the mic and system channels are recording.
     #[serde(default = "default_echo_cancellation")]
     pub echo_cancellation: bool,
+    /// Drop microphone text that only repeats what the system channel just said
+    /// (default off - it cannot tell an echo from a deliberate repetition).
+    #[serde(default)]
+    pub echo_text_filter: bool,
     #[cfg(target_os = "macos")]
     #[serde(default)]
     pub system_audio_backend: Option<String>,
@@ -119,6 +134,7 @@ impl Default for RecordingPreferences {
             mic_gain: 1.0,
             system_gain: 1.0,
             echo_cancellation: true,
+            echo_text_filter: false,
             #[cfg(target_os = "macos")]
             system_audio_backend: Some("coreaudio".to_string()),
         }
@@ -339,6 +355,7 @@ pub async fn load_recording_preferences<R: Runtime>(
     set_mic_gain_runtime(prefs.mic_gain);
     set_system_gain_runtime(prefs.system_gain);
     set_echo_cancellation_runtime(prefs.echo_cancellation);
+    set_echo_text_filter_runtime(prefs.echo_text_filter);
     info!("Loaded recording preferences: save_folder={:?}, auto_save={}, format={}, mic={:?}, system={:?}, mic_gain={:.2}, system_gain={:.2}",
           prefs.save_folder, prefs.auto_save, prefs.file_format,
            prefs.preferred_mic_device, prefs.preferred_system_device, prefs.mic_gain,
@@ -387,6 +404,7 @@ pub async fn save_recording_preferences<R: Runtime>(
     set_mic_gain_runtime(preferences.mic_gain);
     set_system_gain_runtime(preferences.system_gain);
     set_echo_cancellation_runtime(preferences.echo_cancellation);
+    set_echo_text_filter_runtime(preferences.echo_text_filter);
     info!("Successfully persisted recording preferences to disk");
 
     // Save backend preference to global config
