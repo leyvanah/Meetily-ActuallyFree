@@ -156,7 +156,13 @@ struct AudioMixerRingBuffer {
     padded_mic_windows: u64,
     padded_system_windows: u64,
     dropped_samples: u64,
-    inserted_silence_samples: u64,
+    /// Samples each device actually handed over. Short of the recording's own
+    /// length means the audio was lost before this buffer ever saw it - in the
+    /// capture callback or below it - and no amount of care here recovers it.
+    mic_received_samples: u64,
+    system_received_samples: u64,
+    mic_inserted_samples: u64,
+    system_inserted_samples: u64,
     timeline_resets: u64,
 }
 
@@ -202,7 +208,10 @@ impl AudioMixerRingBuffer {
             padded_mic_windows: 0,
             padded_system_windows: 0,
             dropped_samples: 0,
-            inserted_silence_samples: 0,
+            mic_received_samples: 0,
+            system_received_samples: 0,
+            mic_inserted_samples: 0,
+            system_inserted_samples: 0,
             timeline_resets: 0,
         }
     }
@@ -286,7 +295,14 @@ impl AudioMixerRingBuffer {
         } else {
             (gap_seconds.max(0.0) * sample_rate).round() as usize
         };
-        self.inserted_silence_samples += fill as u64;
+        let is_mic = matches!(device_type, DeviceType::Microphone);
+        if is_mic {
+            self.mic_inserted_samples += fill as u64;
+            self.mic_received_samples += samples.len() as u64;
+        } else {
+            self.system_inserted_samples += fill as u64;
+            self.system_received_samples += samples.len() as u64;
+        }
 
         let buffer = match device_type {
             DeviceType::Microphone => &mut self.mic_buffer,
@@ -395,12 +411,18 @@ impl AudioMixerRingBuffer {
 
     /// Everything that made the saved audio differ from the captured stream.
     fn seam_report(&self) -> String {
+        let seconds = |samples: u64| samples as f64 / self.sample_rate;
         format!(
-            "mic windows padded: {}, system windows padded: {}, samples dropped: {}, silence inserted: {:.3}s, timeline resets: {}",
+            "mic delivered {:.3}s (+{:.3}s silence inserted, {} windows padded), \
+             system delivered {:.3}s (+{:.3}s silence inserted, {} windows padded), \
+             samples dropped: {}, timeline resets: {}",
+            seconds(self.mic_received_samples),
+            seconds(self.mic_inserted_samples),
             self.padded_mic_windows,
+            seconds(self.system_received_samples),
+            seconds(self.system_inserted_samples),
             self.padded_system_windows,
             self.dropped_samples,
-            self.inserted_silence_samples as f64 / self.sample_rate,
             self.timeline_resets
         )
     }
@@ -1966,9 +1988,9 @@ mod ring_buffer_tests {
         assert_eq!(ring.timeline_resets, 1);
         assert!(ring.system_buffer.is_empty());
         assert!(
-            ring.inserted_silence_samples < 10,
+            ring.mic_inserted_samples < 10,
             "a reset must not also fill the gap ({} samples inserted)",
-            ring.inserted_silence_samples
+            ring.mic_inserted_samples
         );
     }
 
