@@ -6,6 +6,7 @@ use realfft::RealFftPlanner;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use nnnoiseless::DenoiseState;
 
@@ -120,6 +121,14 @@ struct TruePeakLimiter {
     /// Delay line holding the samples not yet released.
     buffer: Vec<f32>,
     write_position: usize,
+    /// Loudest magnitude still inside the lookahead window, kept as a
+    /// decreasing run of (sample index, magnitude) so the front is always the
+    /// answer. Reading it off a plain scan of the delay line instead cost 144
+    /// comparisons for every one of 48000 samples a second - inside the
+    /// capture callback, where whatever does not finish in time is audio the
+    /// device drops.
+    peaks: VecDeque<(u64, f32)>,
+    samples_seen: u64,
     /// Gain currently applied, moving towards `target_gain`.
     gain: f32,
     /// How fast the gain may fall (per sample) when a peak arrives.
@@ -143,6 +152,8 @@ impl TruePeakLimiter {
         Self {
             buffer: vec![0.0; lookahead_samples],
             write_position: 0,
+            peaks: VecDeque::with_capacity(lookahead_samples),
+            samples_seen: 0,
             gain: 1.0,
             attack_coefficient: per_sample(ATTACK_MS),
             release_coefficient: per_sample(RELEASE_MS),
@@ -156,11 +167,30 @@ impl TruePeakLimiter {
         self.buffer[self.write_position] = sample;
         self.write_position = (self.write_position + 1) % self.buffer.len();
 
-        // Loudest sample still inside the lookahead window decides the target
-        let peak = self
-            .buffer
-            .iter()
-            .fold(0.0f32, |loudest, value| loudest.max(value.abs()));
+        // Loudest sample still inside the lookahead window decides the target.
+        // Anything smaller than the arriving sample can never be the loudest
+        // again, so it is dropped; what remains decreases from the front, and
+        // the front leaves once it has aged out of the window.
+        let magnitude = sample.abs();
+        while self
+            .peaks
+            .back()
+            .is_some_and(|&(_, loudest)| loudest <= magnitude)
+        {
+            self.peaks.pop_back();
+        }
+        self.peaks.push_back((self.samples_seen, magnitude));
+        let window = self.buffer.len() as u64;
+        while self
+            .peaks
+            .front()
+            .is_some_and(|&(index, _)| index + window <= self.samples_seen)
+        {
+            self.peaks.pop_front();
+        }
+        self.samples_seen += 1;
+        let peak = self.peaks.front().map_or(0.0, |&(_, loudest)| loudest);
+
         let target_gain = if peak > true_peak_limit {
             true_peak_limit / peak
         } else {
@@ -205,7 +235,11 @@ impl LoudnessNormalizer {
         const TRUE_PEAK_LIMIT: f64 = -1.0;
         const ANALYZE_CHUNK_SIZE: usize = 512;
 
-        let ebur128 = ebur128::EbuR128::new(channels, sample_rate, ebur128::Mode::I | ebur128::Mode::TRUE_PEAK)
+        // Integrated loudness only. Asking for TRUE_PEAK as well ran a
+        // four-times oversampling interpolator over every sample to find
+        // inter-sample peaks - inside the capture callback, for a number
+        // nothing ever read: the ceiling is held by `TruePeakLimiter` below.
+        let ebur128 = ebur128::EbuR128::new(channels, sample_rate, ebur128::Mode::I)
             .map_err(|e| anyhow::anyhow!("Failed to create EBU R128 normalizer: {}", e))?;
 
         let true_peak_limit = 10_f32.powf(TRUE_PEAK_LIMIT as f32 / 20.0);
@@ -278,6 +312,72 @@ impl LoudnessNormalizer {
 #[cfg(test)]
 mod loudness_normalizer_tests {
     use super::*;
+
+    /// This chain runs inside the capture callback. Whatever it cannot finish
+    /// before the device hands over the next block is audio the device drops -
+    /// silently, upstream of every counter the app keeps. So it has to stay
+    /// far ahead of real time, and in the unoptimized build too, because that
+    /// is the build the app is developed and tested against.
+    #[test]
+    fn the_microphone_chain_keeps_far_ahead_of_the_device() {
+        let sample_rate = 48_000u32;
+        let seconds = 30;
+        let samples: Vec<f32> = (0..sample_rate as usize * seconds)
+            .map(|n| {
+                let t = n as f32 / sample_rate as f32;
+                // Speech-like: a moving formant with syllable-rate amplitude
+                (t * 220.0 * std::f32::consts::TAU).sin()
+                    * (0.3 + 0.3 * (t * 4.0 * std::f32::consts::TAU).sin())
+            })
+            .collect();
+
+        let mut filter = HighPassFilter::new(sample_rate, 80.0);
+        let mut normalizer = LoudnessNormalizer::new(1, sample_rate).expect("normalizer");
+        let block = sample_rate as usize / 100; // 10 ms, as the device delivers
+
+        // Timed a second at a time, because the cost must not grow with the
+        // length of the recording either: a chain that keeps up for the first
+        // minute and falls behind by the thirtieth loses the end of a session.
+        let mut processed = 0usize;
+        let mut per_second = Vec::with_capacity(seconds);
+        for second in samples.chunks(sample_rate as usize) {
+            let started = std::time::Instant::now();
+            for chunk in second.chunks(block) {
+                let filtered = filter.process(chunk);
+                processed += normalizer.normalize_loudness(&filtered, 1.0).len();
+            }
+            per_second.push(started.elapsed().as_secs_f64());
+        }
+
+        let elapsed: f64 = per_second.iter().sum();
+        let realtime_factor = seconds as f64 / elapsed;
+        let first = per_second[0];
+        let last = per_second[per_second.len() - 1];
+
+        assert_eq!(processed, samples.len(), "the chain changed the sample count");
+        println!(
+            "microphone chain: {}s of audio in {:.3}s = {:.1}x real time \
+             (first second {:.1} ms, last second {:.1} ms)",
+            seconds,
+            elapsed,
+            realtime_factor,
+            first * 1000.0,
+            last * 1000.0
+        );
+        assert!(
+            realtime_factor > 20.0,
+            "the microphone chain runs at only {:.1}x real time; the capture \
+             callback will fall behind the device and lose audio",
+            realtime_factor
+        );
+        assert!(
+            last < first * 2.0,
+            "the microphone chain slows down as the recording goes on: \
+             {:.1} ms for the first second, {:.1} ms for the last",
+            first * 1000.0,
+            last * 1000.0
+        );
+    }
 
     /// Runs a real recording through the microphone chain (high-pass filter and
     /// loudness normaliser) so its effect can be measured on its own:
