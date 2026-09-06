@@ -225,6 +225,8 @@ export function PostCallProcessingDialog({
   const [stage, setStage] = useState<Stage>('idle');
   const [speakerCount, setSpeakerCount] = useState('2');
   const [autoDetectSpeakers, setAutoDetectSpeakers] = useState(false);
+  // One conversation partner: the capture channels already say who is who
+  const [singleRemoteSpeaker, setSingleRemoteSpeaker] = useState(true);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState(() => t('postCallPreparing'));
   const [error, setError] = useState<string | null>(null);
@@ -234,6 +236,12 @@ export function PostCallProcessingDialog({
   const skippedEnhancementRef = useRef(false);
 
   const storageKey = `post-call-processing:${meetingId}`;
+
+  useEffect(() => {
+    invoke<{ single_remote_speaker?: boolean }>('get_recording_preferences')
+      .then((prefs) => setSingleRemoteSpeaker(prefs.single_remote_speaker !== false))
+      .catch((error) => console.error('Failed to read recording preferences:', error));
+  }, []);
 
   useEffect(() => {
     if (!enabled || !meetingId || initializedMeetingRef.current === meetingId) return;
@@ -267,6 +275,12 @@ export function PostCallProcessingDialog({
   };
 
   const identifySpeakers = async (count: number | null) => {
+    if (singleRemoteSpeaker) {
+      // Microphone is you, the speakers are them - telling voices apart would
+      // only split one person into several
+      completeWorkflow();
+      return;
+    }
     activeStageRef.current = 'diarizing';
     setStage('diarizing');
     setProgress(100);
@@ -417,7 +431,7 @@ export function PostCallProcessingDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-4 gap-2">
+            <div className={singleRemoteSpeaker ? 'hidden' : 'grid grid-cols-4 gap-2'}>
               {[1, 2, 3, 4, 5, 6, 7, 8].map((count) => (
                 <Button
                   key={count}

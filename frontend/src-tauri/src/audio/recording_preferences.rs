@@ -41,6 +41,8 @@ static SYSTEM_GAIN_BITS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(1.0f32.to
 static ECHO_CANCELLATION: AtomicBool = AtomicBool::new(true);
 /// Whether a microphone segment that only repeats the system channel is dropped.
 static ECHO_TEXT_FILTER: AtomicBool = AtomicBool::new(false);
+/// Whether everything heard through the speakers is one and the same person.
+static SINGLE_REMOTE_SPEAKER: AtomicBool = AtomicBool::new(true);
 
 /// Current mic gain multiplier (0.5–3.0). Applied after mic loudness normalize.
 pub fn mic_gain() -> f32 {
@@ -77,6 +79,17 @@ pub fn echo_text_filter() -> bool {
 fn set_echo_text_filter_runtime(enabled: bool) {
     ECHO_TEXT_FILTER.store(enabled, Ordering::Relaxed);
 }
+
+/// Treat the whole system channel as a single other participant instead of
+/// splitting it into voices. True for a one-to-one conversation, where telling
+/// speakers apart is a job the two capture channels already do perfectly.
+pub fn single_remote_speaker() -> bool {
+    SINGLE_REMOTE_SPEAKER.load(Ordering::Relaxed)
+}
+
+fn set_single_remote_speaker_runtime(enabled: bool) {
+    SINGLE_REMOTE_SPEAKER.store(enabled, Ordering::Relaxed);
+}
 #[cfg(target_os = "macos")]
 use log::error;
 
@@ -106,6 +119,10 @@ pub struct RecordingPreferences {
     /// (default off - it cannot tell an echo from a deliberate repetition).
     #[serde(default)]
     pub echo_text_filter: bool,
+    /// One conversation partner: microphone is you, the speakers are them
+    /// (default on). Turn it off for calls with several remote participants.
+    #[serde(default = "default_single_remote_speaker")]
+    pub single_remote_speaker: bool,
     #[cfg(target_os = "macos")]
     #[serde(default)]
     pub system_audio_backend: Option<String>,
@@ -123,6 +140,10 @@ fn default_echo_cancellation() -> bool {
     true
 }
 
+fn default_single_remote_speaker() -> bool {
+    true
+}
+
 impl Default for RecordingPreferences {
     fn default() -> Self {
         Self {
@@ -135,6 +156,7 @@ impl Default for RecordingPreferences {
             system_gain: 1.0,
             echo_cancellation: true,
             echo_text_filter: false,
+            single_remote_speaker: true,
             #[cfg(target_os = "macos")]
             system_audio_backend: Some("coreaudio".to_string()),
         }
@@ -356,6 +378,7 @@ pub async fn load_recording_preferences<R: Runtime>(
     set_system_gain_runtime(prefs.system_gain);
     set_echo_cancellation_runtime(prefs.echo_cancellation);
     set_echo_text_filter_runtime(prefs.echo_text_filter);
+    set_single_remote_speaker_runtime(prefs.single_remote_speaker);
     info!("Loaded recording preferences: save_folder={:?}, auto_save={}, format={}, mic={:?}, system={:?}, mic_gain={:.2}, system_gain={:.2}",
           prefs.save_folder, prefs.auto_save, prefs.file_format,
            prefs.preferred_mic_device, prefs.preferred_system_device, prefs.mic_gain,
@@ -405,6 +428,7 @@ pub async fn save_recording_preferences<R: Runtime>(
     set_system_gain_runtime(preferences.system_gain);
     set_echo_cancellation_runtime(preferences.echo_cancellation);
     set_echo_text_filter_runtime(preferences.echo_text_filter);
+    set_single_remote_speaker_runtime(preferences.single_remote_speaker);
     info!("Successfully persisted recording preferences to disk");
 
     // Save backend preference to global config

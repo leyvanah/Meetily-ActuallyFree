@@ -22,6 +22,8 @@ export interface RecordingPreferences {
   echo_cancellation?: boolean;
   /** Drop microphone text that only repeats a recent system phrase. */
   echo_text_filter?: boolean;
+  /** One conversation partner: microphone is you, the speakers are them. */
+  single_remote_speaker?: boolean;
 }
 
 interface RecordingSettingsProps {
@@ -41,6 +43,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
     system_gain: 1.0,
     echo_cancellation: true,
     echo_text_filter: false,
+    single_remote_speaker: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -98,6 +101,12 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
 
   const handleEchoCancellationToggle = async (enabled: boolean) => {
     const newPreferences = { ...preferences, echo_cancellation: enabled };
+    setPreferences(newPreferences);
+    await savePreferences(newPreferences);
+  };
+
+  const handleSingleRemoteSpeakerToggle = async (enabled: boolean) => {
+    const newPreferences = { ...preferences, single_remote_speaker: enabled };
     setPreferences(newPreferences);
     await savePreferences(newPreferences);
   };
@@ -243,6 +252,22 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
         <Switch
           checked={preferences.auto_save}
           onCheckedChange={handleAutoSaveToggle}
+          disabled={saving}
+          className="shrink-0"
+        />
+      </div>
+
+      {/* One-to-one: trust the channels instead of clustering voices */}
+      <div className="flex min-w-0 items-start justify-between gap-3 rounded-lg border p-4 sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{t('singleRemoteSpeakerTitle')}</div>
+          <div className="text-sm text-gray-600">
+            {t('singleRemoteSpeakerDescription')}
+          </div>
+        </div>
+        <Switch
+          checked={preferences.single_remote_speaker !== false}
+          onCheckedChange={handleSingleRemoteSpeakerToggle}
           disabled={saving}
           className="shrink-0"
         />

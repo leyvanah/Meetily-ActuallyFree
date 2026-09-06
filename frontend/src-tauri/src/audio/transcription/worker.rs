@@ -192,15 +192,27 @@ pub fn start_transcription_task<R: Runtime>(
                             // display name). System audio is remote parties →
                             // diarize into Speaker N when models are available.
                             crate::audio::common::mark_stt_activity();
+                            //
+                            // In a one-to-one conversation the two capture
+                            // channels already separate the speakers perfectly,
+                            // and clustering the remote channel by voice only
+                            // invents extra people - so skip it entirely there.
+                            let one_to_one =
+                                crate::audio::recording_preferences::single_remote_speaker();
                             let chunk_source = match &chunk.device_type {
                                 crate::audio::recording_state::DeviceType::Microphone => {
-                                    // Still feed the online diarizer so it learns the
-                                    // user's voice embedding for later offline refine.
-                                    let _ = crate::diarization::online::assign_speaker(
-                                        &chunk.data,
-                                        true,
-                                    );
+                                    if !one_to_one {
+                                        // Feed the online diarizer so it learns the
+                                        // user's voice embedding for later offline refine.
+                                        let _ = crate::diarization::online::assign_speaker(
+                                            &chunk.data,
+                                            true,
+                                        );
+                                    }
                                     "You".to_string()
+                                }
+                                crate::audio::recording_state::DeviceType::System if one_to_one => {
+                                    "Speaker 1".to_string()
                                 }
                                 crate::audio::recording_state::DeviceType::System => {
                                     match crate::diarization::online::assign_speaker(
