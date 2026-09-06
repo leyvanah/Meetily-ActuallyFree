@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isVisibleParakeetModel } from '@/lib/parakeet';
+import { externalSttLabel, type ExternalSttConfig } from '@/components/ExternalSttSettings';
+import { GIGAAM_MODEL_NAME, type GigaamModelStatus } from '@/components/GigaamModelManager';
 
 export interface RawModelInfo {
   name: string;
@@ -9,7 +11,7 @@ export interface RawModelInfo {
 }
 
 export interface ModelOption {
-  provider: 'whisper' | 'parakeet';
+  provider: 'whisper' | 'parakeet' | 'gigaam' | 'externalStt';
   name: string;
   displayName: string;
   size_mb: number;
@@ -82,6 +84,37 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     } catch (err) {
       console.error('Failed to fetch Parakeet models:', err);
       setHasParakeetModel(false);
+    }
+
+    // Offer GigaAM when its model is on disk
+    try {
+      const gigaam = await invoke<GigaamModelStatus>('gigaam_get_model_status');
+      if (gigaam.installed) {
+        allModels.push({
+          provider: 'gigaam' as const,
+          name: GIGAAM_MODEL_NAME,
+          displayName: '🇷🇺 GigaAM v3',
+          size_mb: gigaam.sizeMb,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch GigaAM model status:', err);
+    }
+
+    // Offer the external speech service too, when the owner configured one
+    try {
+      const externalConfig = await invoke<ExternalSttConfig>('api_get_external_stt_config');
+      if (externalConfig.url.trim()) {
+        const label = externalSttLabel(externalConfig);
+        allModels.push({
+          provider: 'externalStt' as const,
+          name: label,
+          displayName: `🌐 ${label}`,
+          size_mb: 0,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch external STT config:', err);
     }
 
     setAvailableModels(allModels);

@@ -172,6 +172,38 @@ impl SettingsRepository {
         Ok(())
     }
 
+    /// Raw JSON of the external HTTP STT settings, if the owner configured one.
+    pub async fn get_external_stt_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT externalSttConfig FROM transcript_settings WHERE id = '1' LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        .map(Option::flatten)
+    }
+
+    pub async fn save_external_stt_config(
+        pool: &SqlitePool,
+        config_json: Option<&str>,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO transcript_settings (id, provider, model, externalSttConfig)
+            VALUES ('1', 'parakeet', $1, $2)
+            ON CONFLICT(id) DO UPDATE SET
+                externalSttConfig = excluded.externalSttConfig
+            "#,
+        )
+        .bind(crate::config::DEFAULT_PARAKEET_MODEL)
+        .bind(config_json)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn get_post_call_transcript_config(
         pool: &SqlitePool,
     ) -> std::result::Result<Option<(String, String)>, sqlx::Error> {
@@ -220,6 +252,8 @@ impl SettingsRepository {
         let api_key_column = match provider {
             "localWhisper" => "whisperApiKey",
             "parakeet" => return Ok(()), // Parakeet doesn't need an API key, return early
+            // The external STT service keeps its token inside externalSttConfig
+            "externalStt" => return Ok(()),
             "deepgram" => "deepgramApiKey",
             "elevenLabs" => "elevenLabsApiKey",
             "groq" => "groqApiKey",
@@ -252,6 +286,8 @@ impl SettingsRepository {
         let api_key_column = match provider {
             "localWhisper" => "whisperApiKey",
             "parakeet" => return Ok(None), // Parakeet doesn't need an API key
+            // The external STT service keeps its token inside externalSttConfig
+            "externalStt" => return Ok(None),
             "deepgram" => "deepgramApiKey",
             "elevenLabs" => "elevenLabsApiKey",
             "groq" => "groqApiKey",

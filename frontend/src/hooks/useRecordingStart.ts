@@ -66,6 +66,18 @@ export function useRecordingStart(
     const provider = (transcriptModelConfig?.provider || 'parakeet').toLowerCase();
     const preferParakeet = provider === 'parakeet' || provider.includes('parakeet');
 
+    // GigaAM keeps one model; make sure it is on disk and loaded before starting
+    if (provider === 'gigaam') {
+      const status = await invoke<{ installed: boolean; loaded: boolean }>('gigaam_get_model_status').catch(() => null);
+      if (!status?.installed) return false;
+      if (!status.loaded) await invoke('gigaam_load_model');
+      return true;
+    }
+
+    // The external speech service holds its own model - nothing to preload here.
+    // The backend checks that the service answers before the recording starts.
+    if (provider === 'externalstt') return true;
+
     try {
       if (preferParakeet) {
         await invoke('parakeet_init');
