@@ -298,6 +298,35 @@ mod tests {
         assert!(canceller.process(&[], &[]).is_empty());
     }
 
+    /// What the canceller costs the capture pipeline. Opt-in because the number
+    /// only means something in a release build:
+    ///   cargo test --release --lib echo_cancel -- --ignored --nocapture
+    #[test]
+    #[ignore = "timing measurement, run in release"]
+    fn cost_relative_to_realtime() {
+        let mut canceller = EchoCanceller::new(SAMPLE_RATE).expect("canceller");
+        let window = window_samples();
+        let windows = 1200; // 60 seconds of audio
+        let mic = tone(window, 220.0, 0);
+        let system = tone(window, 440.0, 0);
+
+        let started = std::time::Instant::now();
+        for _ in 0..windows {
+            let cleaned = canceller.process(&mic, &system);
+            assert_eq!(cleaned.len(), window);
+        }
+        let elapsed = started.elapsed().as_secs_f64();
+        let audio_seconds = windows as f64 * 0.05;
+
+        println!(
+            "echo cancellation: {:.3} s of work for {:.0} s of audio ({:.2}% of realtime, {:.2} ms per 50 ms window)",
+            elapsed,
+            audio_seconds,
+            elapsed / audio_seconds * 100.0,
+            elapsed / windows as f64 * 1000.0
+        );
+    }
+
     /// The echo of the system channel must lose most of its energy.
     #[test]
     fn speaker_echo_is_removed_from_the_microphone() {
