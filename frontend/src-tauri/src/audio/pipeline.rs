@@ -732,6 +732,12 @@ impl AudioCapture {
         if !self.state.is_recording() {
             return;
         }
+        // Pause stops the recording clock but not the capture streams, so
+        // without this the room would keep being recorded while the owner
+        // believes it is not, and the paused stretch would land in the file.
+        if self.state.is_paused() {
+            return;
+        }
 
         let source_muted_at_capture = self.state.is_audio_source_muted(&self.device_type);
 
@@ -2034,6 +2040,38 @@ mod ring_buffer_tests {
         assert_eq!(chunk.data.len(), 1_024);
         assert!(chunk.data.iter().all(|sample| *sample == 0.0));
         assert_eq!(chunk.device_type, DeviceType::Microphone);
+    }
+
+    /// Pause has to stop the recording, not just the clock: the streams stay
+    /// open, so anything still reaching the pipeline is audio the owner
+    /// believes is not being kept.
+    #[test]
+    fn paused_capture_records_nothing() {
+        let state = RecordingState::new();
+        state.start_recording().unwrap();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        state.set_audio_sender(sender);
+        let device = Arc::new(AudioDevice::new(
+            "Test microphone".to_string(),
+            AudioDeviceType::Input,
+        ));
+        let capture = AudioCapture::new(
+            device,
+            Arc::clone(&state),
+            48_000,
+            1,
+            DeviceType::Microphone,
+            None,
+        );
+
+        state.pause_recording().unwrap();
+        capture.process_audio_data(&vec![0.5; 1_024]);
+        assert!(receiver.try_recv().is_err(), "a paused recording kept audio");
+
+        state.resume_recording().unwrap();
+        capture.process_audio_data(&vec![0.5; 1_024]);
+        let chunk = receiver.try_recv().expect("resumed capture should be kept");
+        assert_eq!(chunk.data.len(), 1_024);
     }
 
     #[test]
