@@ -327,6 +327,47 @@ mod tests {
         );
     }
 
+    /// Runs a real recording through the canceller with a silent far end, so
+    /// its effect on speech can be measured on its own:
+    ///   AEC_IN=<in.wav> AEC_OUT=<out.wav> cargo test --lib echo_cancel -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs AEC_IN and AEC_OUT"]
+    fn passes_a_recording_through_with_a_silent_far_end() {
+        let input = std::env::var("AEC_IN").expect("AEC_IN");
+        let output = std::env::var("AEC_OUT").expect("AEC_OUT");
+        let (samples, sample_rate) =
+            crate::diarization::dsp::read_wav(std::path::Path::new(&input)).expect("read wav");
+
+        let mut canceller = EchoCanceller::new(sample_rate).expect("canceller");
+        let window = sample_rate as usize * 50 / 1000;
+        let silence = vec![0.0f32; window];
+        let mut cleaned = Vec::with_capacity(samples.len());
+        for chunk in samples.chunks(window) {
+            let reference = &silence[..chunk.len()];
+            cleaned.extend(canceller.process(chunk, reference));
+        }
+
+        // 16-bit PCM so the comparison script can read it back
+        let mut bytes = Vec::with_capacity(44 + cleaned.len() * 2);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&((36 + cleaned.len() * 2) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&((cleaned.len() * 2) as u32).to_le_bytes());
+        for sample in &cleaned {
+            bytes.extend_from_slice(&((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).to_le_bytes());
+        }
+        std::fs::write(&output, bytes).expect("write wav");
+        println!("wrote {} samples to {}", cleaned.len(), output);
+    }
+
     /// The echo of the system channel must lose most of its energy.
     #[test]
     fn speaker_echo_is_removed_from_the_microphone() {

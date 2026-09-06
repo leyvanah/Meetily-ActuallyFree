@@ -62,6 +62,12 @@ pub struct AudioLevels {
     pub limiter_hit: bool,
 }
 
+/// How far a block's arrival time may sit from where its samples belong before
+/// the gap counts as a real break rather than ordinary scheduling jitter.
+/// Well above the few milliseconds a capture callback wanders, well below the
+/// pause or stall the alignment logic exists to survive.
+const TIMELINE_JITTER_TOLERANCE_SECONDS: f64 = 0.03;
+
 /// Ring buffer for synchronized audio mixing
 /// Accumulates samples from mic and system streams until we have aligned windows
 struct AudioMixerRingBuffer {
@@ -169,9 +175,21 @@ impl AudioMixerRingBuffer {
         };
 
         let buffered_end = self.output_samples + buffer.len();
-        if chunk_start > buffered_end {
+
+        // A sound card hands over a continuous, rate-accurate stream; the
+        // timestamp only says when a block reached us, and that arrival time
+        // jitters by a few milliseconds. Correcting the timeline on every block
+        // therefore padded or trimmed a handful of samples about a hundred times
+        // a second, and every one of those edits is a step in the waveform - the
+        // crackle that made speech hard to read for people and for the models.
+        //
+        // So only the differences too large to be arrival jitter are treated as
+        // real: a device that stalled, a paused source, or a stream that started
+        // late and has to line up with the other one.
+        let tolerance = (self.sample_rate * TIMELINE_JITTER_TOLERANCE_SECONDS) as usize;
+        if chunk_start > buffered_end + tolerance {
             buffer.extend(std::iter::repeat(0.0).take(chunk_start - buffered_end));
-        } else if chunk_start < buffered_end {
+        } else if chunk_start + tolerance < buffered_end {
             let overlap = buffered_end - chunk_start;
             if overlap >= samples.len() {
                 return discontinuity_start;
@@ -1619,6 +1637,112 @@ impl Default for AudioPipelineManager {
 mod ring_buffer_tests {
     use super::*;
     use crate::audio::devices::DeviceType as AudioDeviceType;
+
+    /// What the microphone actually offers, so the capture format can be
+    /// compared with what other apps get:
+    ///   cargo test --lib pipeline -- --ignored --nocapture
+    #[test]
+    #[ignore = "prints the host's audio configuration"]
+    fn prints_input_device_configurations() {
+        use cpal::traits::{DeviceTrait, HostTrait};
+        let host = cpal::default_host();
+        for device in host.input_devices().expect("input devices") {
+            let name = device.name().unwrap_or_else(|_| "<unnamed>".to_string());
+            println!("device: {}", name);
+            match device.default_input_config() {
+                Ok(config) => println!(
+                    "  default: {} ch, {} Hz, {:?}",
+                    config.channels(),
+                    config.sample_rate().0,
+                    config.sample_format()
+                ),
+                Err(error) => println!("  default: unavailable ({})", error),
+            }
+            if let Ok(configs) = device.supported_input_configs() {
+                for config in configs {
+                    println!(
+                        "  supported: {} ch, {}-{} Hz, {:?}",
+                        config.channels(),
+                        config.min_sample_rate().0,
+                        config.max_sample_rate().0,
+                        config.sample_format()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Capture callbacks arrive a few milliseconds early or late. The samples
+    /// themselves are continuous, so the stream must come out of the buffer
+    /// exactly as it went in - no silence spliced in, nothing trimmed away.
+    #[test]
+    fn arrival_jitter_does_not_cut_into_the_stream() {
+        let sample_rate = 48_000u32;
+        let mut buffer = AudioMixerRingBuffer::new(sample_rate, true, false);
+
+        let block = sample_rate as usize / 100; // 10 ms, as the device delivers
+        let blocks = 200; // two seconds
+        let mut sent = Vec::with_capacity(block * blocks);
+        let mut received: Vec<f32> = Vec::with_capacity(block * blocks);
+        let mut clock = 0.0f64;
+
+        for index in 0..blocks {
+            // The value of each sample says where it came from, so a gap or a
+            // trim shows up as a break in the sequence.
+            let samples: Vec<f32> = (0..block)
+                .map(|i| (index * block + i) as f32)
+                .collect();
+            sent.extend_from_slice(&samples);
+
+            clock += block as f64 / sample_rate as f64;
+            // Arrival wanders by up to ±4 ms around the true time
+            let jitter = ((index % 9) as f64 - 4.0) * 0.001;
+            buffer.add_samples(DeviceType::Microphone, samples, clock + jitter);
+
+            // The pipeline drains as it goes; holding everything would hit the
+            // buffer's own overflow guard and prove nothing about splicing.
+            while let Some((mic, _)) = buffer.extract_window() {
+                received.extend_from_slice(&mic);
+            }
+        }
+
+        while let Some((mic, _)) = buffer.extract_remaining() {
+            received.extend_from_slice(&mic);
+        }
+
+        assert_eq!(
+            received.len(),
+            sent.len(),
+            "stream length changed: {} sent, {} received",
+            sent.len(),
+            received.len()
+        );
+        assert_eq!(received, sent, "the samples came back re-cut");
+    }
+
+    /// A source that really stops for a while still has to line up afterwards,
+    /// otherwise the two channels would drift apart.
+    #[test]
+    fn a_real_gap_is_still_padded() {
+        let sample_rate = 48_000u32;
+        let mut buffer = AudioMixerRingBuffer::new(sample_rate, true, false);
+        let block = sample_rate as usize / 100;
+
+        buffer.add_samples(DeviceType::Microphone, vec![1.0; block], 0.01);
+        // The device stalls for 100 ms, far beyond arrival jitter
+        buffer.add_samples(DeviceType::Microphone, vec![1.0; block], 0.11 + 0.01);
+
+        let mut received = Vec::new();
+        while let Some((mic, _)) = buffer.extract_window() {
+            received.extend_from_slice(&mic);
+        }
+        let silence = received.iter().filter(|value| **value == 0.0).count();
+        assert!(
+            silence >= block * 9,
+            "expected the stall to be filled with silence, found {} silent samples",
+            silence
+        );
+    }
 
     #[test]
     fn aligns_late_source_to_recording_clock() {

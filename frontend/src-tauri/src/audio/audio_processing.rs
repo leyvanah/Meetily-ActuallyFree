@@ -279,6 +279,48 @@ impl LoudnessNormalizer {
 mod loudness_normalizer_tests {
     use super::*;
 
+    /// Runs a real recording through the microphone chain (high-pass filter and
+    /// loudness normaliser) so its effect can be measured on its own:
+    ///   CHAIN_IN=<in.wav> CHAIN_OUT=<out.wav> cargo test --lib audio_processing -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs CHAIN_IN and CHAIN_OUT"]
+    fn passes_a_recording_through_the_microphone_chain() {
+        let input = std::env::var("CHAIN_IN").expect("CHAIN_IN");
+        let output = std::env::var("CHAIN_OUT").expect("CHAIN_OUT");
+        let (samples, sample_rate) =
+            crate::diarization::dsp::read_wav(std::path::Path::new(&input)).expect("read wav");
+
+        let mut filter = HighPassFilter::new(sample_rate, 80.0);
+        let mut normalizer = LoudnessNormalizer::new(1, sample_rate).expect("normalizer");
+
+        // The capture callback hands over small blocks, so feed it the same way
+        let block = sample_rate as usize / 100; // 10 ms
+        let mut processed = Vec::with_capacity(samples.len());
+        for chunk in samples.chunks(block) {
+            let filtered = filter.process(chunk);
+            processed.extend(normalizer.normalize_loudness(&filtered, 1.0));
+        }
+
+        let mut bytes = Vec::with_capacity(44 + processed.len() * 2);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&((36 + processed.len() * 2) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&((processed.len() * 2) as u32).to_le_bytes());
+        for sample in &processed {
+            bytes.extend_from_slice(&((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).to_le_bytes());
+        }
+        std::fs::write(&output, bytes).expect("write wav");
+        println!("wrote {} samples to {}", processed.len(), output);
+    }
+
     /// Energy above 4 kHz, the band where clipping hash shows up.
     fn high_frequency_share(samples: &[f32]) -> f32 {
         let mut previous = 0.0f32;
