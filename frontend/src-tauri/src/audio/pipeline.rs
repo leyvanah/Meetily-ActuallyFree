@@ -935,6 +935,10 @@ pub struct AudioPipeline {
     // PROFESSIONAL AUDIO MIXING: Ring buffer + RMS-based mixer
     ring_buffer: AudioMixerRingBuffer,
     mixer: ProfessionalAudioMixer,
+    /// Removes the speakers' echo from the mic window before VAD, transcription
+    /// and the saved tracks. None when only one source is recording, when the
+    /// owner turned it off, or when the canceller could not start.
+    echo_canceller: Option<super::echo_cancel::EchoCanceller>,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
     // Live per-source level meter output (mic + system) for the frontend visualizer
@@ -1009,6 +1013,16 @@ impl AudioPipeline {
         let ring_buffer = AudioMixerRingBuffer::new(sample_rate, mic_enabled, system_enabled);
         let mixer = ProfessionalAudioMixer::new(sample_rate);
 
+        // Echo can only exist when the speakers and the microphone are both live
+        let echo_canceller = if mic_enabled
+            && system_enabled
+            && super::recording_preferences::echo_cancellation()
+        {
+            super::echo_cancel::EchoCanceller::new(sample_rate)
+        } else {
+            None
+        };
+
         // Note: target_chunk_duration_ms is ignored - VAD controls segmentation now
         let _ = target_chunk_duration_ms;
 
@@ -1028,6 +1042,7 @@ impl AudioPipeline {
             // Initialize professional audio mixing
             ring_buffer,
             mixer,
+            echo_canceller,
             recording_sender_for_mixed: None,  // Will be set by manager
             // Live level meter (set by manager); default to no output
             level_sender: None,
@@ -1270,6 +1285,14 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // Strip the speakers' echo before anything downstream
+                            // sees the microphone, so neither the live transcript
+                            // nor a later retranscription of mic.mp4 repeats what
+                            // the remote person said.
+                            let mic_window = match self.echo_canceller.as_mut() {
+                                Some(canceller) => canceller.process(&mic_window, &sys_window),
+                                None => mic_window,
+                            };
                             // STEP 3: Transcribe each source independently.
                             // Same wall-clock windows (aligned by the ring buffer),
                             // separate sample streams + VAD state — so when both
@@ -1356,6 +1379,11 @@ impl AudioPipeline {
         );
 
         while let Some((mic_window, sys_window)) = self.ring_buffer.extract_remaining() {
+            // Same treatment as the live path for the trailing partial window
+            let mic_window = match self.echo_canceller.as_mut() {
+                Some(canceller) => canceller.process(&mic_window, &sys_window),
+                None => mic_window,
+            };
             Self::emit_source_speech(
                 &mut self.mic_vad,
                 &mic_window,

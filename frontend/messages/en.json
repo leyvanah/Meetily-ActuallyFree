@@ -842,7 +842,9 @@
     "gigaamDelete": "Delete the model",
     "gigaamDeleteBlocked": "Pick another transcription model first",
     "gigaamDownloadFailed": "Could not download the GigaAM model",
-    "gigaamStatusFailed": "Could not check the GigaAM model status"
+    "gigaamStatusFailed": "Could not check the GigaAM model status",
+    "echoCancellationTitle": "Echo cancellation",
+    "echoCancellationDescription": "Removes the other person’s voice from the microphone when it comes back through the speakers, so their words are not transcribed twice. Applies while both the microphone and system audio are recording."
   },
   "person": {
     "overviewPrompt": "Create a concise profile overview of this person based only on their meeting records. Cover recurring topics, decisions, commitments, collaboration patterns, and recent changes. Cite the relevant meeting title and date for every substantive point, and clearly distinguish recorded facts from inference. Answer in English.",
