@@ -9,6 +9,7 @@ import AnalyticsProvider from '@/components/AnalyticsProvider'
 import { Toaster, toast } from 'sonner'
 import "sonner/dist/styles.css"
 import { useState, useEffect, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { applyAppTheme, getSavedAppTheme } from '@/lib/app-theme'
@@ -74,6 +75,13 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Which window this is. Read through the router rather than `window.location`
+  // so the prerendered HTML and the first client render agree - reading the
+  // location directly made the server draw the full app chrome and the client
+  // the bare bar, which React reported as a hydration failure.
+  const pathname = usePathname()
+  const isMiniBar = pathname?.startsWith('/minibar') ?? false
+
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
   const [startupResolved, setStartupResolved] = useState(false)
@@ -324,8 +332,8 @@ export default function RootLayout({
   // render bare: mounting the app chrome here put the collapsed sidebar (the
   // logo square) and the floating Ask-AI button inside a 520×76 overlay, and
   // their opaque backgrounds squared off the window's rounded corners.
-  // Checked via location rather than usePathname so no hook order changes.
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/minibar')) {
+  // The check sits after every hook, so the hook order never changes.
+  if (isMiniBar) {
     return (
       <LocaleProvider>
         <html lang="en" className="dark minibar-window">
