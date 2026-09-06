@@ -62,11 +62,80 @@ pub struct AudioLevels {
     pub limiter_hit: bool,
 }
 
-/// How far a block's arrival time may sit from where its samples belong before
-/// the gap counts as a real break rather than ordinary scheduling jitter.
-/// Well above the few milliseconds a capture callback wanders, well below the
-/// pause or stall the alignment logic exists to survive.
-const TIMELINE_JITTER_TOLERANCE_SECONDS: f64 = 0.03;
+/// How long a shortfall must persist before it is read as a break in the
+/// stream rather than a late thread. Long enough that no burst of work inside
+/// the app can hold every reading in the window high, short enough that a real
+/// break is repaired while it is still the current one.
+const TIMELINE_OBSERVATION_SECONDS: f64 = 1.0;
+
+/// The smallest sustained shortfall worth repairing. Below this the streams
+/// stay aligned closely enough that filling would cost more than it fixes.
+const TIMELINE_GAP_SECONDS: f64 = 0.1;
+
+/// A sustained shortfall this large is no longer a gap to fill but a stream
+/// that has to be picked up again from where it now is.
+const TIMELINE_RESET_SECONDS: f64 = 5.0;
+
+/// One capture source's place on the shared timeline.
+///
+/// A sound card hands over a continuous, rate-accurate stream. The timestamp
+/// on a block is not the device's: it is the recording clock read at the end of
+/// the capture handler, after that block has been filtered, resampled and
+/// normalized. Anything that holds the handler up pushes the reading later,
+/// and nothing can push it earlier. A single late reading therefore says
+/// nothing about the audio — under load it said a lot, and every correction it
+/// triggered was a step in the waveform. Only a shortfall that *every* reading
+/// over a window agrees on is the device having stopped producing sound.
+#[derive(Default)]
+struct SourceTimeline {
+    /// True once this source has placed a block, so its start has been lined
+    /// up against the other source.
+    started: bool,
+    /// Recent (arrival clock, shortfall in seconds), oldest first.
+    lag_readings: VecDeque<(f64, f64)>,
+}
+
+impl SourceTimeline {
+    fn reset(&mut self) {
+        self.started = false;
+        self.lag_readings.clear();
+    }
+
+    /// The part of the current shortfall that has lasted long enough to be the
+    /// stream rather than the scheduler. Zero while the readings disagree.
+    fn sustained_gap(&mut self, clock: f64, lag_seconds: f64) -> f64 {
+        self.lag_readings.push_back((clock, lag_seconds));
+        // Keep one reading from beyond the window's far edge, so the span of
+        // what is kept covers the whole window rather than stopping just short.
+        while self.lag_readings.len() >= 2
+            && clock - self.lag_readings[1].0 >= TIMELINE_OBSERVATION_SECONDS
+        {
+            self.lag_readings.pop_front();
+        }
+
+        // Not enough history yet to tell a stalled device from a late thread.
+        let Some(&(oldest_at, _)) = self.lag_readings.front() else {
+            return 0.0;
+        };
+        if clock - oldest_at < TIMELINE_OBSERVATION_SECONDS {
+            return 0.0;
+        }
+
+        let sustained = self
+            .lag_readings
+            .iter()
+            .map(|&(_, lag)| lag)
+            .fold(f64::INFINITY, f64::min);
+        if sustained >= TIMELINE_GAP_SECONDS {
+            // Repaired: the readings still to come are measured against the
+            // timeline as it will be after the fill.
+            self.lag_readings.clear();
+            sustained
+        } else {
+            0.0
+        }
+    }
+}
 
 /// Ring buffer for synchronized audio mixing
 /// Accumulates samples from mic and system streams until we have aligned windows
@@ -80,12 +149,15 @@ struct AudioMixerRingBuffer {
     sample_rate: f64,
     timeline_origin: Option<f64>,
     output_samples: usize,
+    mic_timeline: SourceTimeline,
+    system_timeline: SourceTimeline,
     /// Diagnostics: how often the assembled audio was not simply the stream as
     /// captured. Any of these being non-zero means the recording has seams.
     padded_mic_windows: u64,
     padded_system_windows: u64,
     dropped_samples: u64,
-    realigned_chunks: u64,
+    inserted_silence_samples: u64,
+    timeline_resets: u64,
 }
 
 impl AudioMixerRingBuffer {
@@ -125,10 +197,13 @@ impl AudioMixerRingBuffer {
             sample_rate: sample_rate as f64,
             timeline_origin: None,
             output_samples: 0,
+            mic_timeline: SourceTimeline::default(),
+            system_timeline: SourceTimeline::default(),
             padded_mic_windows: 0,
             padded_system_windows: 0,
             dropped_samples: 0,
-            realigned_chunks: 0,
+            inserted_silence_samples: 0,
+            timeline_resets: 0,
         }
     }
 
@@ -140,7 +215,7 @@ impl AudioMixerRingBuffer {
     fn add_samples(
         &mut self,
         device_type: DeviceType,
-        mut samples: Vec<f32>,
+        samples: Vec<f32>,
         timestamp: f64,
     ) -> Option<f64> {
         // Log buffer health periodically for diagnostics
@@ -157,57 +232,69 @@ impl AudioMixerRingBuffer {
             }
         }
 
+        if matches!(device_type, DeviceType::Mixed) {
+            return None;
+        }
+
         let duration = samples.len() as f64 / self.sample_rate;
         let start = (timestamp - duration).max(0.0);
         let origin = *self.timeline_origin.get_or_insert(start);
-        let mut chunk_start = ((start - origin).max(0.0) * self.sample_rate).round() as usize;
-        let current_len = match device_type {
-            DeviceType::Microphone => self.mic_buffer.len(),
-            DeviceType::System => self.system_buffer.len(),
-            DeviceType::Mixed => return None,
+        let chunk_start = (start - origin).max(0.0) * self.sample_rate;
+        let buffered_end = self.output_samples
+            + match device_type {
+                DeviceType::Microphone => self.mic_buffer.len(),
+                _ => self.system_buffer.len(),
+            };
+
+        // How far behind where the clock puts it this source's timeline sits.
+        // Positive means the clock ran ahead: either the device stopped
+        // producing, or the block simply took longer to reach here.
+        let lag_seconds = chunk_start / self.sample_rate - buffered_end as f64 / self.sample_rate;
+        let sample_rate = self.sample_rate;
+        let timeline = match device_type {
+            DeviceType::Microphone => &mut self.mic_timeline,
+            _ => &mut self.system_timeline,
         };
-        let buffered_end = self.output_samples + current_len;
+        let gap_seconds = if timeline.started {
+            timeline.sustained_gap(timestamp, lag_seconds)
+        } else {
+            // The very first block of a source is where the two streams are
+            // lined up against each other; there is no history to weigh it
+            // against and nothing yet to disturb.
+            timeline.started = true;
+            lag_seconds.max(0.0)
+        };
+
         let mut discontinuity_start = None;
-        if chunk_start.saturating_sub(buffered_end) > self.max_buffer_size {
-            warn!("Audio timeline discontinuity detected; resetting source alignment");
+        if gap_seconds >= TIMELINE_RESET_SECONDS {
+            warn!(
+                "Audio timeline discontinuity of {:.1}s detected; resetting source alignment",
+                gap_seconds
+            );
+            self.timeline_resets += 1;
             self.mic_buffer.clear();
             self.system_buffer.clear();
+            self.mic_timeline.reset();
+            self.system_timeline.reset();
             self.timeline_origin = Some(start);
             self.output_samples = 0;
-            chunk_start = 0;
             discontinuity_start = Some(start);
         }
 
+        let fill = if discontinuity_start.is_some() {
+            0
+        } else {
+            (gap_seconds.max(0.0) * sample_rate).round() as usize
+        };
+        self.inserted_silence_samples += fill as u64;
+
         let buffer = match device_type {
             DeviceType::Microphone => &mut self.mic_buffer,
-            DeviceType::System => &mut self.system_buffer,
-            DeviceType::Mixed => return None,
+            _ => &mut self.system_buffer,
         };
-
-        let buffered_end = self.output_samples + buffer.len();
-
-        // A sound card hands over a continuous, rate-accurate stream; the
-        // timestamp only says when a block reached us, and that arrival time
-        // jitters by a few milliseconds. Correcting the timeline on every block
-        // therefore padded or trimmed a handful of samples about a hundred times
-        // a second, and every one of those edits is a step in the waveform - the
-        // crackle that made speech hard to read for people and for the models.
-        //
-        // So only the differences too large to be arrival jitter are treated as
-        // real: a device that stalled, a paused source, or a stream that started
-        // late and has to line up with the other one.
-        let tolerance = (self.sample_rate * TIMELINE_JITTER_TOLERANCE_SECONDS) as usize;
-        if chunk_start > buffered_end + tolerance {
-            self.realigned_chunks += 1;
-            buffer.extend(std::iter::repeat(0.0).take(chunk_start - buffered_end));
-        } else if chunk_start + tolerance < buffered_end {
-            self.realigned_chunks += 1;
-            let overlap = buffered_end - chunk_start;
-            if overlap >= samples.len() {
-                return discontinuity_start;
-            }
-            samples.drain(..overlap);
-        }
+        buffer.extend(std::iter::repeat(0.0).take(fill));
+        // Captured samples are never trimmed to meet the clock. The clock is
+        // the less trustworthy of the two, and a trim deletes speech.
         buffer.extend(samples);
 
         // CRITICAL FIX: Add warnings before dropping samples
@@ -242,8 +329,11 @@ impl AudioMixerRingBuffer {
         let all_ready = (!self.mic_enabled || self.mic_buffer.len() >= self.window_size_samples)
             && (!self.system_enabled || self.system_buffer.len() >= self.window_size_samples)
             && (self.mic_enabled || self.system_enabled);
+        // Mixing without one of the sources fills its window with silence, so
+        // the lead has to be long enough that only a source which has really
+        // stopped can reach it - not one whose blocks are momentarily late.
         let surviving_source_ahead =
-            self.mic_buffer.len().max(self.system_buffer.len()) >= self.window_size_samples * 2;
+            self.mic_buffer.len().max(self.system_buffer.len()) >= self.window_size_samples * 6;
         all_ready || surviving_source_ahead
     }
 
@@ -306,11 +396,12 @@ impl AudioMixerRingBuffer {
     /// Everything that made the saved audio differ from the captured stream.
     fn seam_report(&self) -> String {
         format!(
-            "mic windows padded: {}, system windows padded: {}, samples dropped: {}, chunks realigned: {}",
+            "mic windows padded: {}, system windows padded: {}, samples dropped: {}, silence inserted: {:.3}s, timeline resets: {}",
             self.padded_mic_windows,
             self.padded_system_windows,
             self.dropped_samples,
-            self.realigned_chunks
+            self.inserted_silence_samples as f64 / self.sample_rate,
+            self.timeline_resets
         )
     }
 
@@ -1751,28 +1842,71 @@ mod ring_buffer_tests {
         assert_eq!(received, sent, "the samples came back re-cut");
     }
 
-    /// A source that really stops for a while still has to line up afterwards,
-    /// otherwise the two channels would drift apart.
+    /// Feed `blocks` 10 ms blocks of ones, the first of them arriving
+    /// `late_by` seconds after where the clock says the stream stands, and
+    /// return every sample the buffer gives back.
+    fn run_blocks(
+        buffer: &mut AudioMixerRingBuffer,
+        sample_rate: u32,
+        clock: &mut f64,
+        blocks: usize,
+        late_by: f64,
+    ) -> Vec<f32> {
+        let block = sample_rate as usize / 100;
+        let mut received = Vec::new();
+        for index in 0..blocks {
+            *clock += block as f64 / sample_rate as f64;
+            let arrival = *clock + if index == 0 { late_by } else { 0.0 };
+            buffer.add_samples(DeviceType::Microphone, vec![1.0; block], arrival);
+            while let Some((mic, _)) = buffer.extract_window() {
+                received.extend_from_slice(&mic);
+            }
+        }
+        received
+    }
+
+    /// A source that really stops still has to line up afterwards, otherwise
+    /// the two channels drift apart. The stall shows in every reading that
+    /// follows it, which is what tells it apart from a late thread.
     #[test]
-    fn a_real_gap_is_still_padded() {
+    fn a_sustained_gap_is_still_padded() {
         let sample_rate = 48_000u32;
         let mut buffer = AudioMixerRingBuffer::new(sample_rate, true, false);
-        let block = sample_rate as usize / 100;
+        let mut clock = 0.0;
 
-        buffer.add_samples(DeviceType::Microphone, vec![1.0; block], 0.01);
-        // The device stalls for 100 ms, far beyond arrival jitter
-        buffer.add_samples(DeviceType::Microphone, vec![1.0; block], 0.11 + 0.01);
+        // The device stalls for 200 ms, and keeps delivering afterwards.
+        let mut received = run_blocks(&mut buffer, sample_rate, &mut clock, 1, 0.0);
+        clock += 0.2;
+        received.extend(run_blocks(&mut buffer, sample_rate, &mut clock, 150, 0.0));
 
-        let mut received = Vec::new();
-        while let Some((mic, _)) = buffer.extract_window() {
-            received.extend_from_slice(&mic);
-        }
         let silence = received.iter().filter(|value| **value == 0.0).count();
+        let expected = (0.2 * sample_rate as f64) as usize;
         assert!(
-            silence >= block * 9,
-            "expected the stall to be filled with silence, found {} silent samples",
+            silence >= expected * 9 / 10,
+            "expected about {} silent samples for the stall, found {}",
+            expected,
             silence
         );
+    }
+
+    /// The clock is read inside the capture handler, so work anywhere in that
+    /// path makes a block *look* late while the samples themselves stayed
+    /// continuous. Under load that happened dozens of times a minute, and each
+    /// correction spliced silence into the middle of speech.
+    #[test]
+    fn a_late_arrival_is_not_mistaken_for_a_gap() {
+        let sample_rate = 48_000u32;
+        let mut buffer = AudioMixerRingBuffer::new(sample_rate, true, false);
+        let mut clock = 0.0;
+
+        // Well into the stream one block reaches the buffer 250 ms late,
+        // then delivery goes back to normal. Nothing was actually missed.
+        let mut received = run_blocks(&mut buffer, sample_rate, &mut clock, 150, 0.0);
+        received.extend(run_blocks(&mut buffer, sample_rate, &mut clock, 1, 0.25));
+        received.extend(run_blocks(&mut buffer, sample_rate, &mut clock, 300, 0.0));
+
+        let silence = received.iter().filter(|value| **value == 0.0).count();
+        assert_eq!(silence, 0, "{} samples of silence spliced into the stream", silence);
     }
 
     #[test]
@@ -1814,10 +1948,22 @@ mod ring_buffer_tests {
         let mut ring = AudioMixerRingBuffer::with_window_ms(10, true, true, 600.0);
         ring.add_samples(DeviceType::Microphone, vec![1.0; 2], 0.2);
         ring.add_samples(DeviceType::System, vec![2.0; 2], 0.2);
-        ring.add_samples(DeviceType::Microphone, vec![3.0; 2], 60.2);
 
-        assert_eq!(ring.mic_buffer.len(), 2);
+        // A jump this large is still only acted on once it has held for the
+        // observation window; until then it could be this thread, not the clock.
+        let mut clock = 60.2;
+        for _ in 0..12 {
+            ring.add_samples(DeviceType::Microphone, vec![3.0; 2], clock);
+            clock += 0.2;
+        }
+
+        assert_eq!(ring.timeline_resets, 1);
         assert!(ring.system_buffer.is_empty());
+        assert!(
+            ring.inserted_silence_samples < 10,
+            "a reset must not also fill the gap ({} samples inserted)",
+            ring.inserted_silence_samples
+        );
     }
 
     #[test]
